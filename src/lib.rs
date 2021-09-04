@@ -78,8 +78,8 @@ where F: Fn(&[f64], &f64) -> Vec<f64>
     let f = | n: *const c_int, t_ptr: *const c_double, y_ptr: *mut c_double, dy_ptr: *mut c_double | {
         let (dy, y, t) = unsafe {
             (
-                slice::from_raw_parts_mut(dy_ptr, n as usize),
-                slice::from_raw_parts(y_ptr, n as usize),
+                slice::from_raw_parts_mut(dy_ptr, *n as usize),
+                slice::from_raw_parts(y_ptr, *n as usize),
                 *t_ptr
             )
         };
@@ -152,8 +152,8 @@ where
     let f = | n: *const c_int, t_ptr: *const c_double, y_ptr: *mut c_double, dy_ptr: *mut c_double | {
         let (dy, y, t) = unsafe {
             (
-                slice::from_raw_parts_mut(dy_ptr, n as usize),
-                slice::from_raw_parts(y_ptr, n as usize),
+                slice::from_raw_parts_mut(dy_ptr, *n as usize),
+                slice::from_raw_parts(y_ptr, *n as usize),
                 *t_ptr
             )
         };
@@ -165,13 +165,11 @@ where
     let closure = Closure4::new(&f);
     let call = closure.code_ptr();
 
-    let n = y0.len();
-    let g = | _n: *const c_int, t_ptr: *const c_double, y_ptr: *const c_double, _ml: *const c_int, _mu: *const c_int, dy_ptr: *mut c_double, _nrow: *const c_int | {
-        debug_assert!( unsafe{ n as i32 == *_n } );
+    let g = | n: *const c_int, t_ptr: *const c_double, y_ptr: *const c_double, _ml: *const c_int, _mu: *const c_int, dy_ptr: *mut c_double, _nrow: *const c_int | {
         let (dy, y, t) = unsafe {
             (
-                slice::from_raw_parts_mut(dy_ptr, n as usize * n as usize),
-                slice::from_raw_parts(y_ptr, n as usize),
+                slice::from_raw_parts_mut(dy_ptr, *n as usize * *n as usize),
+                slice::from_raw_parts(y_ptr, *n as usize),
                 *t_ptr
             )
         };
