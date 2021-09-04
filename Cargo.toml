@@ -15,6 +15,10 @@ documentation = "https://docs.rs/lsode/"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = []
+system-libffi = ["libffi/system"]
+
 [dependencies]
 libc = "0.2"
 libffi = "0.9"
