@@ -239,8 +239,8 @@ where
                 )
             };
             let dy_new = (self.dydt)(y, t);
-            for (i, deriv) in dy_new.iter().enumerate() {
-                dy[i] = *deriv
+            for (dest, &deriv) in dy.iter_mut().zip(dy_new.iter()) {
+                *dest = deriv;
             }
         };
         let closure = Closure4::new(&f);
@@ -258,8 +258,8 @@ where
 
         let lrw = 22 + 9 * n + n * n;
         let liw = 20 + n;
-        let mut rwork: Vec<f64> = (0..lrw).map(|_i| 0.0 as c_double).collect();
-        let mut iwork: Vec<i32> = (0..liw).map(|_i| 0 as c_int).collect();
+        let mut rwork = vec![0. as c_double; lrw];
+        let mut iwork = vec![0 as c_int; liw];
 
         let mut result = Vec::new();
 
