@@ -310,24 +310,24 @@ mod tests {
     #[test]
     fn ndarray_swap_axis() {
         let a = array![[0, 1], [2, 3]];
-        assert_eq!(a[[0,1]], 1);
-        assert_eq!(a[[1,0]], 2);
+        assert_eq!(a[[0, 1]], 1);
+        assert_eq!(a[[1, 0]], 2);
         for (ai, c) in a.as_slice().unwrap().iter().zip(&[0, 1, 2, 3]) {
             assert_eq!(ai, c);
         }
 
         let mut b = array![[0, 0], [0, 0]];
         b.assign(&a);
-        assert_eq!(b[[0,1]], 1);
-        assert_eq!(b[[1,0]], 2);
+        assert_eq!(b[[0, 1]], 1);
+        assert_eq!(b[[1, 0]], 2);
         for (bi, c) in b.as_slice().unwrap().iter().zip(&[0, 1, 2, 3]) {
             assert_eq!(bi, c);
         }
 
         b.swap_axes(0, 1);
         b.assign(&a);
-        assert_eq!(b[[0,1]], 1);
-        assert_eq!(b[[1,0]], 2);
+        assert_eq!(b[[0, 1]], 1);
+        assert_eq!(b[[1, 0]], 2);
         b.swap_axes(0, 1);
         for (bi, c) in b.as_slice().unwrap().iter().zip(&[0, 2, 1, 3]) {
             assert_eq!(bi, c);
