@@ -1,4 +1,4 @@
-use lsode::{linspace, solve_ode};
+use lsode::{linspace, Lsode};
 
 /// This example has the setup from:
 /// https://docs.juliadiffeq.org/stable/tutorials/ode_example/#Example-3:-Solving-Nonhomogeneous-Equations-using-Parameterized-Functions-1
@@ -19,7 +19,7 @@ fn main() {
     let ts = linspace(0.0, 10.0, 1000);
     let (atol, rtol) = (1e-6, 1e-6);
 
-    let sol = solve_ode(f, &y0, ts.clone(), atol, rtol);
+    let sol = Lsode::new(f).solve(&y0, ts.clone(), atol, rtol);
 
     for (i, t) in sol.iter().zip(ts) {
         println!("{} {} {}", t, i[0], i[1]);

@@ -25,7 +25,7 @@ fn stiff() {
     let atol = 1e-6;
     let rtol = 1e-8;
 
-    let sol = lsode::solve_ode(rhs_stiff, &y0, ts.clone(), atol, rtol);
+    let sol = lsode::Lsode::new(rhs_stiff).solve(&y0, ts.clone(), atol, rtol);
 
     for (analytical, calculated) in ts.iter().map(|x| solution_stiff(*x)).zip(sol) {
         assert!((analytical[0] - calculated[0]).abs() < 1e-3,
@@ -55,7 +55,7 @@ fn decay() {
     let atol = 1e-6;
     let rtol = 1e-8;
 
-    let sol = lsode::solve_ode(rhs_decay, &y0, ts.clone(), atol, rtol);
+    let sol = lsode::Lsode::new(rhs_decay).solve(&y0, ts.clone(), atol, rtol);
 
     println!("{:?}", sol);
 
@@ -75,7 +75,7 @@ fn closure_rhs() {
         dy[0] = *t * y[0]; 
         dy
         };
-    let sol = lsode::solve_ode(f, &y0, ts, 1e-6, 1e-6);
+    let sol = lsode::Lsode::new(f).solve(&y0, ts, 1e-6, 1e-6);
     
     println!("{:?}", sol);
     assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
