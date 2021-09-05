@@ -40,6 +40,12 @@ pub extern fn fake_jacobian(
     _nr:  *const c_int
     ) { }
 
+use std::sync::Mutex;
+use lazy_static::lazy_static;
+
+lazy_static!{
+    static ref flag: Mutex<()> = Mutex::<()>::new(());
+}
 
 /// Solves system of ODEs for times in `t_dense`.
 /// First time in `t_dense` has to be the initial time.
@@ -108,6 +114,7 @@ where F: Fn(&[f64], &f64) -> Vec<f64>
 
     let mut result = Vec::new();
 
+    let _lock = flag.lock().unwrap();
     for tout in t_dense {
         unsafe { dlsode_(
                 *call,
