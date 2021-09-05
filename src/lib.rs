@@ -163,7 +163,7 @@ pub struct Lsode<F, Jacbian> {
 
 impl<F> Lsode<F, ()>
 where
-    F: Fn(&[f64], &f64) -> Vec<f64>,
+    F: Fn(&[f64], f64) -> Vec<f64>,
 {
     pub fn new(dydt: F) -> Self {
         Self {
@@ -217,16 +217,16 @@ where
     /// ```
     /// let y0 = [1.0];
     /// let ts = vec![0.0, 1.0];
-    /// let f = |y: &[f64], t: &f64| {
+    /// let f = |y: &[f64], t: f64| {
     ///     let mut dy = vec![0.0];
-    ///     dy[0] = *t * y[0];
+    ///     dy[0] = t * y[0];
     ///     dy
     ///     };
-    /// let sol = lsode::Lsode::new(f).solve(&y0, ts, 1e-6, 1e-6);
+    /// let sol = lsode::Lsode::new(f).solve(&y0, &ts, 1e-6, 1e-6);
     ///
     /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
     /// ```
-    pub fn solve(&self, y0: &[f64], t_dense: Vec<f64>, atol: f64, rtol: f64) -> Vec<Vec<f64>> {
+    pub fn solve(&self, y0: &[f64], t: &[f64], atol: f64, rtol: f64) -> Vec<Vec<f64>> {
         let f = |n: *const c_int,
                  t_ptr: *const c_double,
                  y_ptr: *mut c_double,
@@ -238,7 +238,7 @@ where
                     *t_ptr,
                 )
             };
-            let dy_new = (self.dydt)(y, &t);
+            let dy_new = (self.dydt)(y, t);
             for (i, deriv) in dy_new.iter().enumerate() {
                 dy[i] = *deriv
             }
@@ -248,7 +248,7 @@ where
 
         let mut y: Vec<f64> = y0.to_vec();
         let n = y0.len();
-        let mut t = t_dense[0];
+        let mut t0 = t[0];
 
         let itol = 1;
         let itask = 1;
@@ -264,13 +264,13 @@ where
         let mut result = Vec::new();
 
         let _lock = flag.lock().unwrap();
-        for tout in t_dense {
+        for &tout in t.iter() {
             unsafe {
                 dlsode_(
                     *call,
                     &(n as i32),
                     y.as_mut_ptr(),
-                    &mut t,
+                    &mut t0,
                     &tout,
                     &itol,
                     &rtol,

@@ -10,7 +10,7 @@ fn solution_stiff(t: f64) -> [f64; 2] {
     ]
 }
 
-fn rhs_stiff(y: &[f64], _t: &f64) -> Vec<f64> {
+fn rhs_stiff(y: &[f64], _t: f64) -> Vec<f64> {
     let mut dy = vec![0.0, 0.0];
     dy[0] = 998.0*y[0] + 1998.0*y[1];
     dy[1] = -999.0*y[0] - 1999.0*y[1];
@@ -25,7 +25,7 @@ fn stiff() {
     let atol = 1e-6;
     let rtol = 1e-8;
 
-    let sol = lsode::Lsode::new(rhs_stiff).solve(&y0, ts.clone(), atol, rtol);
+    let sol = lsode::Lsode::new(rhs_stiff).solve(&y0, &ts, atol, rtol);
 
     for (analytical, calculated) in ts.iter().map(|x| solution_stiff(*x)).zip(sol) {
         assert!((analytical[0] - calculated[0]).abs() < 1e-3,
@@ -41,7 +41,7 @@ fn solution_decay(t: f64) -> [f64; 1] {
     ]
 }
 
-fn rhs_decay(y: &[f64], _t: &f64) -> Vec<f64> {
+fn rhs_decay(y: &[f64], _t: f64) -> Vec<f64> {
     let mut dy = vec![0.0,];
     dy[0] = -y[0];
     dy
@@ -55,7 +55,7 @@ fn decay() {
     let atol = 1e-6;
     let rtol = 1e-8;
 
-    let sol = lsode::Lsode::new(rhs_decay).solve(&y0, ts.clone(), atol, rtol);
+    let sol = lsode::Lsode::new(rhs_decay).solve(&y0, &ts, atol, rtol);
 
     println!("{:?}", sol);
 
@@ -70,12 +70,12 @@ fn decay() {
 fn closure_rhs() {
     let y0 = [1.0];
     let ts = vec![0.0, 1.0];
-    let f = |y: &[f64], t: &f64| {
+    let f = |y: &[f64], t: f64| {
         let mut dy = vec![0.0];
-        dy[0] = *t * y[0]; 
+        dy[0] = t * y[0]; 
         dy
         };
-    let sol = lsode::Lsode::new(f).solve(&y0, ts, 1e-6, 1e-6);
+    let sol = lsode::Lsode::new(f).solve(&y0, &ts, 1e-6, 1e-6);
     
     println!("{:?}", sol);
     assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
