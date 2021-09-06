@@ -58,52 +58,133 @@ lazy_static! {
 
 use ndarray::prelude::*;
 
-pub struct Lsode<F, Jacbian> {
-    dydt: F,
-    jacobian: Option<Jacbian>,
+type ExternJacobian = extern "C" fn(
+    *const c_int,
+    *const c_double,
+    *const c_double,
+    *const c_int,
+    *const c_int,
+    *mut c_double,
+    *const c_int,
+);
+
+#[derive(Clone, Copy)]
+enum MethodFlag {
+    FullJacobian = 21,
+    Estimate = 22,
+    //BandedJacobian = 23,
 }
 
-impl<F> Lsode<F, ()>
+pub struct Jacobian<'a> {
+    mf: MethodFlag,
+    udf: Box<
+        dyn 'a + Fn(
+            *const c_int,
+            *const c_double,
+            *const c_double,
+            *const c_int,
+            *const c_int,
+            *mut c_double,
+            *const c_int,
+        ),
+    >,
+}
+
+impl<'a> Jacobian<'a> {
+    fn new<G>(mf: MethodFlag, g: G) -> Self
+    where
+        G: 'a
+            + Fn(
+                *const c_int,
+                *const c_double,
+                *const c_double,
+                *const c_int,
+                *const c_int,
+                *mut c_double,
+                *const c_int,
+            ),
+    {
+        let udf = Box::new(g);
+        Self { mf, udf }
+    }
+
+    fn method_flag(&self) -> c_int {
+        self.mf as c_int
+    }
+
+    fn real_work_space(&self, n_eq: usize) -> Vec<c_double> {
+        use MethodFlag::*;
+        match self.mf {
+            Estimate | FullJacobian => vec![0. as c_double; 22 + 9 * n_eq + n_eq * n_eq],
+        }
+    }
+
+    fn integer_work_space(&self, n_eq: usize) -> Vec<c_int> {
+        use MethodFlag::*;
+        match self.mf {
+            Estimate | FullJacobian => vec![0 as c_int; 22 + n_eq],
+        }
+    }
+}
+
+pub struct Lsode<'a, F> {
+    dydt: F,
+    jacobian: Jacobian<'a>,
+}
+
+impl<'a, F> Lsode<'a, F>
 where
     F: Fn(&[f64], f64) -> Vec<f64>,
 {
     pub fn new(dydt: F) -> Self {
+        let g = |_neq: *const c_int,
+                 _t: *const c_double,
+                 _y: *const c_double,
+                 _ml: *const c_int,
+                 _mu: *const c_int,
+                 _pd: *mut c_double,
+                 _nr: *const c_int| {};
         Self {
             dydt,
-            jacobian: None,
+            jacobian: Jacobian::new(MethodFlag::Estimate, g),
         }
     }
 
-    pub fn with_full_jacobian<Jacobian>(self, g: Jacobian) -> Lsode<F, Jacobian>
+    pub fn with_full_jacobian<G>(self, udf: G) -> Self
     where
-        Jacobian: Fn(&[f64], f64) -> Array2<f64>,
+        G: 'a + Fn(&[f64], f64) -> Array2<f64>,
     {
-        Lsode::<F, Jacobian> {
-            dydt: self.dydt,
-            jacobian: Some(g),
+        let g = move |n: *const c_int,
+                      t_ptr: *const c_double,
+                      y_ptr: *const c_double,
+                      _ml: *const c_int,
+                      _mu: *const c_int,
+                      dy_ptr: *mut c_double,
+                      _nrow: *const c_int| {
+            let n = unsafe { *n as usize };
+            let (dy, y, t) = unsafe {
+                (
+                    slice::from_raw_parts_mut(dy_ptr, n * n),
+                    slice::from_raw_parts(y_ptr, n),
+                    *t_ptr,
+                )
+            };
+            let mut dy = ArrayViewMut2::<f64>::from_shape((n, n), dy).expect("somthing wrong");
+            dy.swap_axes(0, 1); // make dy fortran-ordered
+            let dy_new = (udf)(y, t);
+            dy.assign(&dy_new);
+        };
+        Lsode {
+            jacobian: Jacobian::new(MethodFlag::FullJacobian, g),
+            ..self
         }
     }
+}
 
-    pub fn with_banded_jacobian<Jacobian>(self, g: Jacobian) -> Lsode<F, Jacobian>
-    where
-        Jacobian: Fn(&[f64], f64) -> Vec<Vec<f64>>,
-    {
-        Lsode::<F, Jacobian> {
-            dydt: self.dydt,
-            jacobian: Some(g),
-        }
-    }
-
-    pub fn with_sparse_jacobian<Jacobian>(self, g: Jacobian) -> Lsode<F, Jacobian>
-    where
-        Jacobian: Fn(&[f64], f64) -> Vec<(usize, usize, f64)>,
-    {
-        Lsode::<F, Jacobian> {
-            dydt: self.dydt,
-            jacobian: Some(g),
-        }
-    }
-
+impl<'a, F> Lsode<'a, F>
+where
+    F: Fn(&[f64], f64) -> Vec<f64>,
+{
     /// Solves system of ODEs for times in `t_dense`.
     /// First time in `t_dense` has to be the initial time.
     ///
@@ -148,99 +229,7 @@ where
         let closure = Closure4::new(&f);
         let call = closure.code_ptr();
 
-        let mut y: Vec<f64> = y0.to_vec();
-        let n = y0.len();
-        let mut t0 = t[0];
-
-        let itol = 1;
-        let itask = 1;
-        let iopt = 0;
-        let mut istate = 1;
-        let mf = 22;
-
-        let lrw = 22 + 9 * n + n * n;
-        let liw = 20 + n;
-        let mut rwork = vec![0. as c_double; lrw];
-        let mut iwork = vec![0 as c_int; liw];
-
-        let mut result = Vec::new();
-
-        let _lock = flag.lock().unwrap();
-        for &tout in t.iter() {
-            unsafe {
-                dlsode_(
-                    *call,
-                    &(n as i32),
-                    y.as_mut_ptr(),
-                    &mut t0,
-                    &tout,
-                    &itol,
-                    &rtol,
-                    &atol,
-                    &itask,
-                    &mut istate,
-                    &iopt,
-                    rwork.as_mut_ptr(),
-                    &(lrw as i32),
-                    iwork.as_mut_ptr(),
-                    &(liw as i32),
-                    fake_jacobian,
-                    &mf,
-                );
-            }
-
-            result.push(y.clone());
-        }
-        result
-    }
-}
-
-impl<F, Jacobian> Lsode<F, Jacobian>
-where
-    F: Fn(&[f64], f64) -> Vec<f64>,
-    Jacobian: Fn(&[f64], f64) -> Array2<f64>,
-{
-    pub fn solve(&self, y0: &[f64], t: &[f64], atol: f64, rtol: f64) -> Vec<Vec<f64>> {
-        let f = |n: *const c_int,
-                 t_ptr: *const c_double,
-                 y_ptr: *mut c_double,
-                 dy_ptr: *mut c_double| {
-            let (dy, y, t) = unsafe {
-                (
-                    slice::from_raw_parts_mut(dy_ptr, *n as usize),
-                    slice::from_raw_parts(y_ptr, *n as usize),
-                    *t_ptr,
-                )
-            };
-            let dy_new = (self.dydt)(y, t);
-            for (dest, &deriv) in dy.iter_mut().zip(dy_new.iter()) {
-                *dest = deriv;
-            }
-        };
-        let closure = Closure4::new(&f);
-        let call = closure.code_ptr();
-
-        let g = |n: *const c_int,
-                 t_ptr: *const c_double,
-                 y_ptr: *const c_double,
-                 _ml: *const c_int,
-                 _mu: *const c_int,
-                 dy_ptr: *mut c_double,
-                 _nrow: *const c_int| {
-            let n = unsafe { *n as usize };
-            let (dy, y, t) = unsafe {
-                (
-                    slice::from_raw_parts_mut(dy_ptr, n * n),
-                    slice::from_raw_parts(y_ptr, n),
-                    *t_ptr,
-                )
-            };
-            let mut dy = ArrayViewMut2::<f64>::from_shape((n, n), dy).expect("somthing wrong");
-            dy.swap_axes(0, 1); // make dy fortran-ordered
-            let dy_new = (self.jacobian.as_ref().unwrap())(y, t);
-            dy.assign(&dy_new);
-        };
-        let jacobian_closure = Closure7::new(&g);
+        let jacobian_closure = Closure7::new(&self.jacobian.udf);
         let call_jacobian = jacobian_closure.code_ptr();
 
         let mut y: Vec<f64> = y0.to_vec();
@@ -251,12 +240,12 @@ where
         let itask = 1;
         let iopt = 0;
         let mut istate = 1;
-        let mf = 21; // Stiff (BDF) method, user-supplied full Jacobian.
+        let mf = self.jacobian.method_flag();
 
-        let lrw = 22 + 9 * n + n * n;
-        let liw = 20 + n;
-        let mut rwork = vec![0. as c_double; lrw];
-        let mut iwork = vec![0 as c_int; liw];
+        let mut rwork = self.jacobian.real_work_space(n);
+        let mut iwork = self.jacobian.integer_work_space(n);
+        let lrw = rwork.len();
+        let liw = iwork.len();
 
         let mut result = Vec::new();
 
