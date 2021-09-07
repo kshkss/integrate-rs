@@ -78,15 +78,16 @@ enum MethodFlag {
 pub struct Jacobian<'a> {
     mf: MethodFlag,
     udf: Box<
-        dyn 'a + Fn(
-            *const c_int,
-            *const c_double,
-            *const c_double,
-            *const c_int,
-            *const c_int,
-            *mut c_double,
-            *const c_int,
-        ),
+        dyn 'a
+            + Fn(
+                *const c_int,
+                *const c_double,
+                *const c_double,
+                *const c_int,
+                *const c_int,
+                *mut c_double,
+                *const c_int,
+            ),
     >,
 }
 
@@ -127,16 +128,16 @@ impl<'a> Jacobian<'a> {
     }
 }
 
-pub struct Lsode<'a, F> {
-    dydt: F,
+pub struct Lsode<'a> {
+    dydt: Box<dyn 'a + Fn(&[f64], f64) -> Vec<f64>>,
     jacobian: Jacobian<'a>,
 }
 
-impl<'a, F> Lsode<'a, F>
-where
-    F: Fn(&[f64], f64) -> Vec<f64>,
-{
-    pub fn new(dydt: F) -> Self {
+impl<'a> Lsode<'a> {
+    pub fn new<F>(dydt: F) -> Self
+    where
+        F: 'a + Fn(&[f64], f64) -> Vec<f64>,
+    {
         let g = |_neq: *const c_int,
                  _t: *const c_double,
                  _y: *const c_double,
@@ -145,7 +146,7 @@ where
                  _pd: *mut c_double,
                  _nr: *const c_int| {};
         Self {
-            dydt,
+            dydt: Box::new(dydt),
             jacobian: Jacobian::new(MethodFlag::Estimate, g),
         }
     }
@@ -179,12 +180,7 @@ where
             ..self
         }
     }
-}
 
-impl<'a, F> Lsode<'a, F>
-where
-    F: Fn(&[f64], f64) -> Vec<f64>,
-{
     /// Solves system of ODEs for times in `t_dense`.
     /// First time in `t_dense` has to be the initial time.
     ///
