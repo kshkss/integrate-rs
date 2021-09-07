@@ -70,9 +70,10 @@ type ExternJacobian = extern "C" fn(
 
 #[derive(Clone, Copy)]
 enum MethodFlag {
-    FullJacobian = 21,
-    Estimate = 22,
-    //BandedJacobian = 23,
+    EstimateFullJacobian,
+    FullJacobian,
+    EstimateBandedJacobian(usize, usize),
+    BandedJacobian(usize, usize),
 }
 
 pub struct Jacobian<'a> {
@@ -110,20 +111,37 @@ impl<'a> Jacobian<'a> {
     }
 
     fn method_flag(&self) -> c_int {
-        self.mf as c_int
+        use MethodFlag::*;
+        match self.mf {
+            EstimateFullJacobian => 22 as c_int,
+            EstimateBandedJacobian(_, _) => 25 as c_int,
+            FullJacobian => 21,
+            BandedJacobian(_, _) => 24 as c_int,
+        }
     }
 
     fn real_work_space(&self, n_eq: usize) -> Vec<c_double> {
         use MethodFlag::*;
         match self.mf {
-            Estimate | FullJacobian => vec![0. as c_double; 22 + 9 * n_eq + n_eq * n_eq],
+            EstimateFullJacobian | FullJacobian => {
+                vec![0. as c_double; 22 + 9 * n_eq + n_eq * n_eq]
+            }
+            EstimateBandedJacobian(ml, mu) | BandedJacobian(ml, mu) => {
+                vec![0. as c_double; 22 + 10 * n_eq + (2 * ml + mu) * n_eq]
+            }
         }
     }
 
     fn integer_work_space(&self, n_eq: usize) -> Vec<c_int> {
         use MethodFlag::*;
         match self.mf {
-            Estimate | FullJacobian => vec![0 as c_int; 22 + n_eq],
+            EstimateFullJacobian | FullJacobian => vec![0 as c_int; 22 + n_eq],
+            EstimateBandedJacobian(ml, mu) | BandedJacobian(ml, mu) => {
+                let mut iwork = vec![0 as c_int; 22 + n_eq];
+                iwork[0] = ml as c_int;
+                iwork[1] = mu as c_int;
+                iwork
+            }
         }
     }
 }
@@ -147,7 +165,27 @@ impl<'a> Lsode<'a> {
                  _nr: *const c_int| {};
         Self {
             dydt: Box::new(dydt),
-            jacobian: Jacobian::new(MethodFlag::Estimate, g),
+            jacobian: Jacobian {
+                mf: MethodFlag::EstimateFullJacobian,
+                udf: Box::new(g),
+            },
+        }
+    }
+
+    pub fn estimate_banded_jacobian(self, ml: usize, mu: usize) -> Self {
+        let g = |_neq: *const c_int,
+                 _t: *const c_double,
+                 _y: *const c_double,
+                 _ml: *const c_int,
+                 _mu: *const c_int,
+                 _pd: *mut c_double,
+                 _nr: *const c_int| {};
+        Lsode {
+            jacobian: Jacobian {
+                mf: MethodFlag::EstimateBandedJacobian(ml, mu),
+                udf: Box::new(g),
+            },
+            ..self
         }
     }
 
@@ -172,11 +210,51 @@ impl<'a> Lsode<'a> {
             };
             let mut dy = ArrayViewMut2::<f64>::from_shape((n, n), dy).expect("somthing wrong");
             dy.swap_axes(0, 1); // make dy fortran-ordered
-            let dy_new = (udf)(y, t);
+            let dy_new = udf(y, t);
             dy.assign(&dy_new);
         };
         Lsode {
-            jacobian: Jacobian::new(MethodFlag::FullJacobian, g),
+            jacobian: Jacobian {
+                mf: MethodFlag::FullJacobian,
+                udf: Box::new(g),
+            },
+            ..self
+        }
+    }
+
+    pub fn with_banded_jacobian<G>(self, ml: usize, mu: usize, udf: G) -> Self
+    where
+        G: 'a + Fn(&[f64], f64) -> Vec<Array1<f64>>,
+    {
+        let g = move |n: *const c_int,
+                      t_ptr: *const c_double,
+                      y_ptr: *const c_double,
+                      _ml: *const c_int,
+                      _mu: *const c_int,
+                      dy_ptr: *mut c_double,
+                      _nrow: *const c_int| {
+            let n = unsafe { *n as usize };
+            let ms: usize = todo!();
+            let (dy, y, t) = unsafe {
+                (
+                    slice::from_raw_parts_mut(dy_ptr, ms),
+                    slice::from_raw_parts(y_ptr, n),
+                    *t_ptr,
+                )
+            };
+            let mut dy = ArrayViewMut1::<f64>::from(dy);
+            let dy_new = udf(y, t);
+            /*
+            dy.assign(&dy_new);
+            */
+            todo!()
+        };
+        todo!();
+        Lsode {
+            jacobian: Jacobian {
+                mf: MethodFlag::BandedJacobian(ml, mu),
+                udf: Box::new(g),
+            },
             ..self
         }
     }
