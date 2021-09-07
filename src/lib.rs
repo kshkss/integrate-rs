@@ -53,20 +53,10 @@ use lazy_static::lazy_static;
 use std::sync::Mutex;
 
 lazy_static! {
-    static ref flag: Mutex<()> = Mutex::<()>::new(());
+    static ref FLAG: Mutex<()> = Mutex::<()>::new(());
 }
 
 use ndarray::prelude::*;
-
-type ExternJacobian = extern "C" fn(
-    *const c_int,
-    *const c_double,
-    *const c_double,
-    *const c_int,
-    *const c_int,
-    *mut c_double,
-    *const c_int,
-);
 
 #[derive(Clone, Copy)]
 enum MethodFlag {
@@ -323,7 +313,7 @@ impl<'a> Lsode<'a> {
 
         let mut result = Vec::new();
 
-        let _lock = flag.lock().unwrap();
+        let _lock = FLAG.lock().unwrap();
         for &tout in t.iter() {
             unsafe {
                 dlsode_(
