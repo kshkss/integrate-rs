@@ -311,7 +311,7 @@ impl<'a> Lsode<'a> {
         let lrw = rwork.len();
         let liw = iwork.len();
 
-        let mut result = Vec::new();
+        let mut result = Vec::with_capacity(t.len());
 
         let _lock = FLAG.lock().unwrap();
         for &tout in t.iter() {
