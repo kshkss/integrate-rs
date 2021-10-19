@@ -1,8 +1,14 @@
-# Solve systems of differential equations
+# Integrate-rs
 
-This crate uses ODEPACK Fortran library to solve systems of ordinary differential equations and differential algebraic equations.
+## Compute one-dimansional integrals
 
-# ODEPACK
+### QUADPACK
+
+## Solve systems of differential equations
+
+This crate is forked from tungli/lsode-rust and uses ODEPACK Fortran library to solve systems of ordinary differential equations and differential algebraic equations.
+
+### ODEPACK
 
 I obtained the [ODEPACK][1] code that is present in this repository from [here](http://www.netlib.org/odepack/).
 I do not know what the licensing of the original ODEPACK code is, I assume it is released to the public domain.
