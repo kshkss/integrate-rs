@@ -35,6 +35,37 @@ extern "C" {
         ),
         mf: &c_int,
     );
+
+    /// Call `DLSODES` subroutine from ODEPACK
+    ///
+    /// For info on passed arguments look inside ODEPACK.
+    pub fn dlsodes_(
+        f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
+        neq: &c_int,
+        y: *mut c_double,
+        t: &mut c_double,
+        tout: &c_double,
+        itol: &c_int,
+        rtol: &c_double,
+        atol: &c_double,
+        itask: &c_int,
+        istate: &mut c_int,
+        iopt: &c_int,
+        rwork: *mut c_double,
+        lrw: &c_int,
+        iwork: *mut c_int,
+        liw: &c_int,
+        jac: extern "C" fn(
+            *const c_int,
+            *const c_double,
+            *const c_double,
+            *const c_int,
+            *const c_int,
+            *mut c_double,
+            *const c_int,
+        ),
+        mf: &c_int,
+    );
 }
 
 /// A dummy function to pass to `dlsode_` in case the user does not want to specify a Jacobian.
@@ -64,20 +95,40 @@ enum Generator {
     UserSuppliedFull,
     InternalBanded(usize, usize),
     UserSuppliedBanded(usize, usize),
+    InternalSparse(usize),
+    UserSuppliedSparse(usize),
 }
 
-type JacobianGenerator<'a> = Box<
-    dyn 'a
-        + Fn(
-            *const c_int,
-            *const c_double,
-            *const c_double,
-            *const c_int,
-            *const c_int,
-            *mut c_double,
-            *const c_int,
-        ),
->;
+enum JacobianGenerator<'a> {
+    Lsode(
+        Box<
+            dyn 'a
+                + Fn(
+                    *const c_int,
+                    *const c_double,
+                    *const c_double,
+                    *const c_int,
+                    *const c_int,
+                    *mut c_double,
+                    *const c_int,
+                ),
+        >,
+    ),
+    Lsodes(
+        Box<
+            dyn 'a
+                + Fn(
+                    *const c_int,
+                    *const c_double,
+                    *const c_double,
+                    *const c_int,
+                    *const c_int,
+                    *const c_int,
+                    *mut c_double,
+                ),
+        >,
+    ),
+}
 
 pub struct Jacobian<'a> {
     mf: Generator,
@@ -111,6 +162,8 @@ impl<'a> Jacobian<'a> {
             InternalBanded(_, _) => 25,
             UserSuppliedFull => 21,
             UserSuppliedBanded(_, _) => 24,
+            InternalSparse(_) => 222,
+            UserSuppliedSparse(_) => 121,
         }
     }
 
@@ -122,6 +175,16 @@ impl<'a> Jacobian<'a> {
             }
             InternalBanded(ml, mu) | UserSuppliedBanded(ml, mu) => {
                 vec![0_f64; 22 + 10 * n_eq + (2 * ml + mu) * n_eq]
+            }
+            InternalSparse(nnz) => {
+                const LENRAT: usize = 2;
+                let lwm = 2 * nnz + 2 * n_eq + (nnz + 10 * n_eq) / LENRAT;
+                vec![0_f64; 20 + 9 * n_eq + lwm]
+            }
+            UserSuppliedSparse(nnz) => {
+                const LENRAT: usize = 2;
+                let lwm = 2 * nnz + 2 * n_eq + (nnz + 9 * n_eq) / LENRAT;
+                vec![0_f64; 20 + 9 * n_eq + lwm]
             }
         }
     }
@@ -136,6 +199,7 @@ impl<'a> Jacobian<'a> {
                 iwork[1] = mu as c_int;
                 iwork
             }
+            InternalSparse(_) | UserSuppliedSparse(_) => vec![0_i32; 30],
         }
     }
 }
@@ -295,9 +359,6 @@ impl<'a> BDF<'a> {
         let closure = Closure4::new(&f);
         let call = closure.code_ptr();
 
-        let jacobian_closure = Closure7::new(&self.jacobian.udf);
-        let call_jacobian = jacobian_closure.code_ptr();
-
         let mut y: Vec<f64> = y0.to_vec();
         let n = y0.len();
         let mut t0 = t[0];
@@ -316,30 +377,64 @@ impl<'a> BDF<'a> {
         let mut result = Vec::with_capacity(t.len());
 
         let _lock = FLAG.lock().unwrap();
-        for &tout in t.iter() {
-            unsafe {
-                dlsode_(
-                    *call,
-                    &(n as i32),
-                    y.as_mut_ptr(),
-                    &mut t0,
-                    &tout,
-                    &itol,
-                    &rtol,
-                    &atol,
-                    &itask,
-                    &mut istate,
-                    &iopt,
-                    rwork.as_mut_ptr(),
-                    &(lrw as i32),
-                    iwork.as_mut_ptr(),
-                    &(liw as i32),
-                    *call_jacobian,
-                    &mf,
-                );
+        match &self.jacobian.udf {
+            JacobianGenerator::Lsode(udf) => {
+                let jacobian_closure = Closure7::new(udf);
+                let call_jacobian = jacobian_closure.code_ptr();
+                for &tout in t.iter() {
+                    unsafe {
+                        dlsode_(
+                            *call,
+                            &(n as i32),
+                            y.as_mut_ptr(),
+                            &mut t0,
+                            &tout,
+                            &itol,
+                            &rtol,
+                            &atol,
+                            &itask,
+                            &mut istate,
+                            &iopt,
+                            rwork.as_mut_ptr(),
+                            &(lrw as i32),
+                            iwork.as_mut_ptr(),
+                            &(liw as i32),
+                            *call_jacobian,
+                            &mf,
+                        );
+                    }
+                    result.push(y.clone());
+                }
             }
 
-            result.push(y.clone());
+            JacobianGenerator::Lsodes(udf) => {
+                let jacobian_closure = Closure7::new(udf);
+                let call_jacobian = jacobian_closure.code_ptr();
+                for &tout in t.iter() {
+                    unsafe {
+                        dlsodes_(
+                            *call,
+                            &(n as i32),
+                            y.as_mut_ptr(),
+                            &mut t0,
+                            &tout,
+                            &itol,
+                            &rtol,
+                            &atol,
+                            &itask,
+                            &mut istate,
+                            &iopt,
+                            rwork.as_mut_ptr(),
+                            &(lrw as i32),
+                            iwork.as_mut_ptr(),
+                            &(liw as i32),
+                            *call_jacobian,
+                            &mf,
+                        );
+                    }
+                    result.push(y.clone());
+                }
+            }
         }
         result
     }
@@ -359,7 +454,7 @@ impl<'a> BDF<'a> {
             dydt: Box::new(dydt),
             jacobian: Jacobian {
                 mf: Generator::InternalFull,
-                udf: Box::new(g),
+                udf: JacobianGenerator::Lsode(Box::new(g)),
             },
         }
     }
@@ -377,7 +472,7 @@ impl<'a> BDF<'a> {
         Self {
             jacobian: Jacobian {
                 mf: Generator::InternalFull,
-                udf: Box::new(g),
+                udf: JacobianGenerator::Lsode(Box::new(g)),
             },
             ..self
         }
@@ -435,7 +530,7 @@ impl<'a> BDF<'a> {
         Self {
             jacobian: Jacobian {
                 mf: Generator::UserSuppliedFull,
-                udf: Box::new(g),
+                udf: JacobianGenerator::Lsode(Box::new(g)),
             },
             ..self
         }
@@ -466,7 +561,7 @@ impl<'a> BDF<'a> {
         Self {
             jacobian: Jacobian {
                 mf: Generator::InternalBanded(ml, mu),
-                udf: Box::new(g),
+                udf: JacobianGenerator::Lsode(Box::new(g)),
             },
             ..self
         }
@@ -511,7 +606,252 @@ impl<'a> BDF<'a> {
         Self {
             jacobian: Jacobian {
                 mf: Generator::UserSuppliedBanded(ml, mu),
-                udf: Box::new(g),
+                udf: JacobianGenerator::Lsode(Box::new(g)),
+            },
+            ..self
+        }
+    }
+
+    /// # Example
+    ///
+    /// ```
+    /// extern crate approx;
+    ///
+    /// const RK1: f64 = 0.1;
+    /// const RK2: f64 = 10.;
+    /// const RK3: f64 = 50.;
+    /// const RK4: f64 = 2.5;
+    /// const RK5: f64 = 0.1;
+    /// const RK6: f64 = 10.;
+    /// const RK7: f64 = 50.;
+    /// const RK8: f64 = 2.5;
+    /// const RK9:f64 = 50.;
+    /// const RK10:f64 = 5.;
+    /// const RK11:f64 = 50.;
+    /// const RK12:f64 = 50.;
+    /// const RK13:f64 = 50.;
+    /// const RK14:f64 = 30.;
+    /// const RK15:f64 = 100.;
+    /// const RK16:f64 = 2.5;
+    /// const RK17:f64 = 100.;
+    /// const RK18:f64 = 2.5;
+    /// const RK19:f64 = 50.;
+    /// const RK20:f64 = 50.;
+    /// let f = |y: &[f64], t: f64| {
+    /// vec![ -RK1 * y[0],
+    ///  RK1 * y[0] + RK11 * RK14 * y[3] + RK19 * RK14 * y[4] - RK3 * y[1] * y[2] - RK15 * y[1] *
+    ///  y[11] - RK2 * y[1],
+    ///  RK2 * y[1] - RK5 * y[2] - RK3 * y[1] * y[2] - RK7 * y[9] * y[2] + RK11 * RK14 * y[3] + RK12
+    ///  * RK14 * y[5],
+    ///  RK3 * y[1] * y[2] - RK11 * RK14 * y[3] - RK4 * y[3],
+    ///  RK15 * y[1] * y[11] - RK19 * RK14 * y[4] - RK16 * y[4],
+    ///  RK7 * y[9] * y[2] - RK12 * RK14 * y[5] - RK8 * y[5],
+    ///  RK17 * y[9] * y[11] - RK20 * RK14 * y[6] - RK18 * y[6],
+    ///  RK9 * y[9] - RK13 * RK14 * y[7] - RK10 * y[7],
+    ///  RK4 * y[3] + RK16 * y[4] + RK8 * y[5] + RK18 * y[6],
+    ///  RK5 * y[2] + RK12 * RK14 * y[5] + RK20 * RK14 * y[6] + RK13 * RK14 * y[7] - RK7 * y[9] *
+    ///  y[2] - RK17 * y[9] * y[11] - RK6 * y[9] - RK9 * y[9],
+    ///  RK10 * y[7],
+    ///  RK6 * y[9] + RK19 * RK14 * y[4] + RK20 * RK14 * y[6] - RK15 * y[1] * y[11] - RK17 * y[9]
+    ///  * y[11],
+    ///  ]
+    /// };
+    /// let y0 = [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,];
+    /// let ts = vec![0., 0.1];
+    /// let sol = integrate::BDF::new(f)
+    ///     .gen_sparse_jacobian(58)
+    ///     .solve(&y0, &ts, 1e-6, 1e-6);
+    ///
+    /// for (&result, &gt) in sol[1].iter().zip(
+    ///        &[ 9.90050e-01,  6.28228e-03,  3.65313e-03,  7.51934e-07,
+    ///           1.12167e-09,  1.18458e-09,  1.77291e-12,  3.26476e-07,
+    ///           5.46720e-08,  9.99500e-06,  4.48483e-08,  2.76398e-06,
+    ///         ])
+    /// {
+    ///     approx::assert_abs_diff_eq!(result, gt, epsilon = 1e-6);
+    /// }
+    /// ```
+    pub fn gen_sparse_jacobian(self, max_nnz: usize) -> Self {
+        let g = |_neq: *const c_int,
+                 _t: *const c_double,
+                 _y: *const c_double,
+                 _j: *const c_int,
+                 _ian: *const c_int,
+                 _jan: *const c_int,
+                 _pd: *mut c_double| {};
+        Self {
+            jacobian: Jacobian {
+                mf: Generator::InternalSparse(max_nnz),
+                udf: JacobianGenerator::Lsodes(Box::new(g)),
+            },
+            ..self
+        }
+    }
+
+    /// # Example
+    ///
+    /// ```
+    /// extern crate approx;
+    ///
+    /// const RK1: f64 = 0.1;
+    /// const RK2: f64 = 10.;
+    /// const RK3: f64 = 50.;
+    /// const RK4: f64 = 2.5;
+    /// const RK5: f64 = 0.1;
+    /// const RK6: f64 = 10.;
+    /// const RK7: f64 = 50.;
+    /// const RK8: f64 = 2.5;
+    /// const RK9:f64 = 50.;
+    /// const RK10:f64 = 5.;
+    /// const RK11:f64 = 50.;
+    /// const RK12:f64 = 50.;
+    /// const RK13:f64 = 50.;
+    /// const RK14:f64 = 30.;
+    /// const RK15:f64 = 100.;
+    /// const RK16:f64 = 2.5;
+    /// const RK17:f64 = 100.;
+    /// const RK18:f64 = 2.5;
+    /// const RK19:f64 = 50.;
+    /// const RK20:f64 = 50.;
+    /// let f = |y: &[f64], t: f64| {
+    /// vec![ -RK1 * y[0],
+    ///  RK1 * y[0] + RK11 * RK14 * y[3] + RK19 * RK14 * y[4] - RK3 * y[1] * y[2] - RK15 * y[1] *
+    ///  y[11] - RK2 * y[1],
+    ///  RK2 * y[1] - RK5 * y[2] - RK3 * y[1] * y[2] - RK7 * y[9] * y[2] + RK11 * RK14 * y[3] + RK12
+    ///  * RK14 * y[5],
+    ///  RK3 * y[1] * y[2] - RK11 * RK14 * y[3] - RK4 * y[3],
+    ///  RK15 * y[1] * y[11] - RK19 * RK14 * y[4] - RK16 * y[4],
+    ///  RK7 * y[9] * y[2] - RK12 * RK14 * y[5] - RK8 * y[5],
+    ///  RK17 * y[9] * y[11] - RK20 * RK14 * y[6] - RK18 * y[6],
+    ///  RK9 * y[9] - RK13 * RK14 * y[7] - RK10 * y[7],
+    ///  RK4 * y[3] + RK16 * y[4] + RK8 * y[5] + RK18 * y[6],
+    ///  RK5 * y[2] + RK12 * RK14 * y[5] + RK20 * RK14 * y[6] + RK13 * RK14 * y[7] - RK7 * y[9] *
+    ///  y[2] - RK17 * y[9] * y[11] - RK6 * y[9] - RK9 * y[9],
+    ///  RK10 * y[7],
+    ///  RK6 * y[9] + RK19 * RK14 * y[4] + RK20 * RK14 * y[6] - RK15 * y[1] * y[11] - RK17 * y[9]
+    ///  * y[11],
+    ///  ]
+    /// };
+    ///
+    /// let jac = |y: &[f64], t: f64, j: usize| {
+    ///     let mut jac = vec![0.; y.len()];
+    ///     match j {
+    ///         0 => {
+    ///             jac[0] = -RK1;
+    ///             jac[1] = RK1;
+    ///         },
+    ///         1 => {
+    ///             jac[1] = - RK3 * y[2] -RK15 * y[11] - RK2;
+    ///             jac[2] = RK2 - RK3 * y[2];
+    ///             jac[3] = RK3 * y[2];
+    ///             jac[4] = RK15 * y[11];
+    ///             jac[11] = -RK15 * y[11];
+    ///         },
+    ///         2 => {
+    ///             jac[1] = - RK3 * y[1];
+    ///             jac[2] = - RK5 - RK3 * y[1] - RK7 * y[9];
+    ///             jac[3] = RK3 * y[1];
+    ///             jac[5] = RK7 * y[9];
+    ///             jac[9] = RK5 - RK7 * y[9];
+    ///         },
+    ///         3 => {
+    ///             jac[1] = RK11 * RK14;
+    ///             jac[2] = RK11 * RK14;
+    ///             jac[3] = - RK11 * RK14 - RK4;
+    ///             jac[8] = RK4;
+    ///         },
+    ///         4 => {
+    ///             jac[1] = RK19 * RK14;
+    ///             jac[4] = -RK19 * RK14 - RK16;
+    ///             jac[8] = RK16;
+    ///             jac[11] = RK19 * RK14;
+    ///         },
+    ///         5 => {
+    ///             jac[2] = RK12 * RK14;
+    ///             jac[5] = -RK12 * RK14 -RK8;
+    ///             jac[8] = RK8;
+    ///             jac[9] = RK12 * RK14;
+    ///         },
+    ///         6 => {
+    ///             jac[6] = -RK20 * RK14 - RK18;
+    ///             jac[8] = RK18;
+    ///             jac[9] = RK20 * RK14;
+    ///             jac[11] = RK20 * RK14;
+    ///         },
+    ///         7 => {
+    ///             jac[7] = - RK13 * RK14 - RK10;
+    ///             jac[9] = RK13 * RK14;
+    ///             jac[10] = RK10;
+    ///         },
+    ///         8 => {
+    ///         },
+    ///         9 => {
+    ///             jac[2] = -RK7 * y[2];
+    ///             jac[5] = RK7 * y[2];
+    ///             jac[6] = RK17 * y[11];
+    ///             jac[7] = RK9;
+    ///             jac[9] = -RK7 * y[2] - RK17 * y[11] - RK6 - RK9;
+    ///             jac[11] = RK6 - RK17 * y[11];
+    ///         },
+    ///         10 => {
+    ///         },
+    ///         11 => {
+    ///             jac[1] = - RK15 * y[1];
+    ///             jac[4] = RK15 * y[1];
+    ///             jac[6] = RK17 * y[9];
+    ///             jac[9] = - RK17 * y[9];
+    ///             jac[11] = -RK15 * y[1] - RK17 * y[9];
+    ///         },
+    ///         _ => {
+    ///             panic!();
+    ///         }
+    ///     }
+    ///     jac
+    /// };
+    /// let y0 = [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,];
+    /// let ts = vec![0., 0.1];
+    /// let sol = integrate::BDF::new(f)
+    ///     .gen_sparse_jacobian_by(58, jac)
+    ///     .solve(&y0, &ts, 1e-6, 1e-6);
+    ///
+    /// for (&result, &gt) in sol[1].iter().zip(
+    ///        &[ 9.90050e-01,  6.28228e-03,  3.65313e-03,  7.51934e-07,
+    ///           1.12167e-09,  1.18458e-09,  1.77291e-12,  3.26476e-07,
+    ///           5.46720e-08,  9.99500e-06,  4.48483e-08,  2.76398e-06,
+    ///         ])
+    /// {
+    ///     approx::assert_abs_diff_eq!(result, gt, epsilon = 1e-6);
+    /// }
+    /// ```
+    pub fn gen_sparse_jacobian_by(
+        self,
+        max_nnz: usize,
+        udf: impl 'a + Fn(&[f64], f64, usize) -> Vec<f64>,
+    ) -> Self {
+        let g = move |neq: *const c_int,
+                      t_ptr: *const c_double,
+                      y_ptr: *const c_double,
+                      j_ptr: *const c_int,
+                      _ian: *const c_int,
+                      _jan: *const c_int,
+                      pd_ptr: *mut c_double| {
+            let n = unsafe { *neq as usize };
+            let j = unsafe { *j_ptr as usize };
+            let (pd, y, t) = unsafe {
+                (
+                    slice::from_raw_parts_mut(pd_ptr, n),
+                    slice::from_raw_parts(y_ptr, n),
+                    *t_ptr,
+                )
+            };
+            let mut pd = ArrayViewMut1::<f64>::from(pd);
+            let pd_new = udf(y, t, j - 1);
+            pd.assign(&ArrayView1::from(&pd_new));
+        };
+        Self {
+            jacobian: Jacobian {
+                mf: Generator::UserSuppliedSparse(max_nnz),
+                udf: JacobianGenerator::Lsodes(Box::new(g)),
             },
             ..self
         }
