@@ -1,6 +1,40 @@
 use libc::{c_double, c_int};
 use std::slice;
 
+#[link(name = "gfortran")]
+extern "C" {
+    /// Call `DLSODE` subroutine from ODEPACK
+    ///
+    /// For info on passed arguments look inside ODEPACK.
+    pub fn dlsode_(
+        f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
+        neq: &c_int,
+        y: *mut c_double,
+        t: &mut c_double,
+        tout: &c_double,
+        itol: &c_int,
+        rtol: &c_double,
+        atol: &c_double,
+        itask: &c_int,
+        istate: &mut c_int,
+        iopt: &c_int,
+        rwork: *mut c_double,
+        lrw: &c_int,
+        iwork: *mut c_int,
+        liw: &c_int,
+        jac: extern "C" fn(
+            *const c_int,
+            *const c_double,
+            *const c_double,
+            *const c_int,
+            *const c_int,
+            *mut c_double,
+            *const c_int,
+        ),
+        mf: &c_int,
+    );
+}
+
 // From Numerical Recipes - The Art of Scientific Computing by W.H. Press et al. in chapter about
 // stiff ODEs.
 extern "C" fn rhs(
@@ -41,7 +75,7 @@ fn direct_call_to_dlsode() {
     let mut iwork: [c_int; LIW as usize] = [0; LIW as usize];
 
     unsafe {
-        integrate::dlsode_(
+        dlsode_(
             rhs,
             &NEQ,
             y.as_mut_ptr(),

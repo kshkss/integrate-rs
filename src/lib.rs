@@ -3,71 +3,6 @@ use libffi::high::Closure4;
 use libffi::high::Closure7;
 use std::slice;
 
-#[link(name = "gfortran")]
-extern "C" {
-    /// Call `DLSODE` subroutine from ODEPACK
-    ///
-    /// For info on passed arguments look inside ODEPACK.
-    pub fn dlsode_(
-        f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
-        neq: &c_int,
-        y: *mut c_double,
-        t: &mut c_double,
-        tout: &c_double,
-        itol: &c_int,
-        rtol: &c_double,
-        atol: &c_double,
-        itask: &c_int,
-        istate: &mut c_int,
-        iopt: &c_int,
-        rwork: *mut c_double,
-        lrw: &c_int,
-        iwork: *mut c_int,
-        liw: &c_int,
-        jac: extern "C" fn(
-            *const c_int,
-            *const c_double,
-            *const c_double,
-            *const c_int,
-            *const c_int,
-            *mut c_double,
-            *const c_int,
-        ),
-        mf: &c_int,
-    );
-
-    /// Call `DLSODES` subroutine from ODEPACK
-    ///
-    /// For info on passed arguments look inside ODEPACK.
-    pub fn dlsodes_(
-        f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
-        neq: &c_int,
-        y: *mut c_double,
-        t: &mut c_double,
-        tout: &c_double,
-        itol: &c_int,
-        rtol: &c_double,
-        atol: &c_double,
-        itask: &c_int,
-        istate: &mut c_int,
-        iopt: &c_int,
-        rwork: *mut c_double,
-        lrw: &c_int,
-        iwork: *mut c_int,
-        liw: &c_int,
-        jac: extern "C" fn(
-            *const c_int,
-            *const c_double,
-            *const c_double,
-            *const c_int,
-            *const c_int,
-            *mut c_double,
-            *const c_int,
-        ),
-        mf: &c_int,
-    );
-}
-
 /// A dummy function to pass to `dlsode_` in case the user does not want to specify a Jacobian.
 pub extern "C" fn fake_jacobian(
     _neq: *const c_int,
@@ -79,6 +14,10 @@ pub extern "C" fn fake_jacobian(
     _nr: *const c_int,
 ) {
 }
+mod dlsode;
+use dlsode::Lsode;
+mod dlsodes;
+use dlsodes::Lsodes;
 
 use lazy_static::lazy_static;
 use std::sync::Mutex;
@@ -89,123 +28,8 @@ lazy_static! {
 
 use ndarray::prelude::*;
 
-#[derive(Clone, Copy)]
-enum Generator {
-    InternalFull,
-    UserSuppliedFull,
-    InternalBanded(usize, usize),
-    UserSuppliedBanded(usize, usize),
-    InternalSparse(usize),
-    UserSuppliedSparse(usize),
-}
-
-enum JacobianGenerator<'a> {
-    Lsode(
-        Box<
-            dyn 'a
-                + Fn(
-                    *const c_int,
-                    *const c_double,
-                    *const c_double,
-                    *const c_int,
-                    *const c_int,
-                    *mut c_double,
-                    *const c_int,
-                ),
-        >,
-    ),
-    Lsodes(
-        Box<
-            dyn 'a
-                + Fn(
-                    *const c_int,
-                    *const c_double,
-                    *const c_double,
-                    *const c_int,
-                    *const c_int,
-                    *const c_int,
-                    *mut c_double,
-                ),
-        >,
-    ),
-}
-
-pub struct Jacobian<'a> {
-    mf: Generator,
-    udf: JacobianGenerator<'a>,
-}
-
-impl<'a> Jacobian<'a> {
-    /*
-    fn new<G>(mf: MethodFlag, g: G) -> Self
-    where
-        G: 'a
-            + Fn(
-                *const c_int,
-                *const c_double,
-                *const c_double,
-                *const c_int,
-                *const c_int,
-                *mut c_double,
-                *const c_int,
-            ),
-    {
-        let udf = Box::new(g);
-        Self { mf, udf }
-    }
-    */
-
-    fn method_flag(&self) -> c_int {
-        use Generator::*;
-        match self.mf {
-            InternalFull => 22,
-            InternalBanded(_, _) => 25,
-            UserSuppliedFull => 21,
-            UserSuppliedBanded(_, _) => 24,
-            InternalSparse(_) => 222,
-            UserSuppliedSparse(_) => 121,
-        }
-    }
-
-    fn real_work_space(&self, n_eq: usize) -> Vec<c_double> {
-        use Generator::*;
-        match self.mf {
-            InternalFull | UserSuppliedFull => {
-                vec![0_f64; 22 + 9 * n_eq + n_eq * n_eq]
-            }
-            InternalBanded(ml, mu) | UserSuppliedBanded(ml, mu) => {
-                vec![0_f64; 22 + 10 * n_eq + (2 * ml + mu) * n_eq]
-            }
-            InternalSparse(nnz) => {
-                const LENRAT: usize = 2;
-                let lwm = 2 * nnz + 2 * n_eq + (nnz + 10 * n_eq) / LENRAT;
-                vec![0_f64; 20 + 9 * n_eq + lwm]
-            }
-            UserSuppliedSparse(nnz) => {
-                const LENRAT: usize = 2;
-                let lwm = 2 * nnz + 2 * n_eq + (nnz + 9 * n_eq) / LENRAT;
-                vec![0_f64; 20 + 9 * n_eq + lwm]
-            }
-        }
-    }
-
-    fn integer_work_space(&self, n_eq: usize) -> Vec<c_int> {
-        use Generator::*;
-        match self.mf {
-            InternalFull | UserSuppliedFull => vec![0_i32; 22 + n_eq],
-            InternalBanded(ml, mu) | UserSuppliedBanded(ml, mu) => {
-                let mut iwork = vec![0_i32; 22 + n_eq];
-                iwork[0] = ml as c_int;
-                iwork[1] = mu as c_int;
-                iwork
-            }
-            InternalSparse(_) | UserSuppliedSparse(_) => vec![0_i32; 30],
-        }
-    }
-}
-
 pub struct Adams<'a> {
-    dydt: Box<dyn 'a + Fn(&[f64], f64) -> Vec<f64>>,
+    odepack: Lsode<'a>,
 }
 
 impl<'a> Adams<'a> {
@@ -233,85 +57,33 @@ impl<'a> Adams<'a> {
     ///
     /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
     /// ```
-    pub fn solve(&self, y0: &[f64], t: &[f64], atol: f64, rtol: f64) -> Vec<Vec<f64>> {
-        let f = |n: *const c_int,
-                 t_ptr: *const c_double,
-                 y_ptr: *mut c_double,
-                 dy_ptr: *mut c_double| {
-            let (dy, y, t) = unsafe {
-                (
-                    slice::from_raw_parts_mut(dy_ptr, *n as usize),
-                    slice::from_raw_parts(y_ptr, *n as usize),
-                    *t_ptr,
-                )
-            };
-            let dy_new = (self.dydt)(y, t);
-            for (dest, &deriv) in dy.iter_mut().zip(dy_new.iter()) {
-                *dest = deriv;
-            }
-        };
-        let closure = Closure4::new(&f);
-        let call = closure.code_ptr();
-
-        let mut y: Vec<f64> = y0.to_vec();
-        let n = y0.len();
-        let mut t0 = t[0];
-
-        let itol = 1;
-        let itask = 1;
-        let iopt = 0;
-        let mut istate = 1;
-        let mf = 10;
-
-        let mut rwork = vec![0_f64; 20 + 16 * n];
-        let mut iwork = vec![0_i32; 20];
-        let lrw = rwork.len();
-        let liw = iwork.len();
-
-        let mut result = Vec::with_capacity(t.len());
-
-        let _lock = FLAG.lock().unwrap();
-        for &tout in t.iter() {
-            unsafe {
-                dlsode_(
-                    *call,
-                    &(n as i32),
-                    y.as_mut_ptr(),
-                    &mut t0,
-                    &tout,
-                    &itol,
-                    &rtol,
-                    &atol,
-                    &itask,
-                    &mut istate,
-                    &iopt,
-                    rwork.as_mut_ptr(),
-                    &(lrw as i32),
-                    iwork.as_mut_ptr(),
-                    &(liw as i32),
-                    fake_jacobian,
-                    &mf,
-                );
-            }
-
-            result.push(y.clone());
-        }
-        result
-    }
-
     pub fn new<F>(dydt: F) -> Self
     where
         F: 'a + Fn(&[f64], f64) -> Vec<f64>,
     {
-        Self {
+        let g = |_neq: *const c_int,
+                 _t: *const c_double,
+                 _y: *const c_double,
+                 _ml: *const c_int,
+                 _mu: *const c_int,
+                 _pd: *mut c_double,
+                 _nr: *const c_int| {};
+        let odepack = Lsode {
+            mf: dlsode::Generator::None,
+            udf: Box::new(g),
             dydt: Box::new(dydt),
-        }
+        };
+        Self { odepack }
+    }
+
+    pub fn solve(&self, y0: &[f64], t: &[f64], atol: f64, rtol: f64) -> Vec<Vec<f64>> {
+        self.odepack.solve(y0, t, atol, rtol)
     }
 }
 
-pub struct BDF<'a> {
-    dydt: Box<dyn 'a + Fn(&[f64], f64) -> Vec<f64>>,
-    jacobian: Jacobian<'a>,
+pub enum BDF<'a> {
+    Dense(Lsode<'a>),
+    Sparse(Lsodes<'a>),
 }
 
 impl<'a> BDF<'a> {
@@ -339,106 +111,6 @@ impl<'a> BDF<'a> {
     ///
     /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
     /// ```
-    pub fn solve(&self, y0: &[f64], t: &[f64], atol: f64, rtol: f64) -> Vec<Vec<f64>> {
-        let f = |n: *const c_int,
-                 t_ptr: *const c_double,
-                 y_ptr: *mut c_double,
-                 dy_ptr: *mut c_double| {
-            let (dy, y, t) = unsafe {
-                (
-                    slice::from_raw_parts_mut(dy_ptr, *n as usize),
-                    slice::from_raw_parts(y_ptr, *n as usize),
-                    *t_ptr,
-                )
-            };
-            let dy_new = (self.dydt)(y, t);
-            for (dest, &deriv) in dy.iter_mut().zip(dy_new.iter()) {
-                *dest = deriv;
-            }
-        };
-        let closure = Closure4::new(&f);
-        let call = closure.code_ptr();
-
-        let mut y: Vec<f64> = y0.to_vec();
-        let n = y0.len();
-        let mut t0 = t[0];
-
-        let itol = 1;
-        let itask = 1;
-        let iopt = 0;
-        let mut istate = 1;
-        let mf = self.jacobian.method_flag();
-
-        let mut rwork = self.jacobian.real_work_space(n);
-        let mut iwork = self.jacobian.integer_work_space(n);
-        let lrw = rwork.len();
-        let liw = iwork.len();
-
-        let mut result = Vec::with_capacity(t.len());
-
-        let _lock = FLAG.lock().unwrap();
-        match &self.jacobian.udf {
-            JacobianGenerator::Lsode(udf) => {
-                let jacobian_closure = Closure7::new(udf);
-                let call_jacobian = jacobian_closure.code_ptr();
-                for &tout in t.iter() {
-                    unsafe {
-                        dlsode_(
-                            *call,
-                            &(n as i32),
-                            y.as_mut_ptr(),
-                            &mut t0,
-                            &tout,
-                            &itol,
-                            &rtol,
-                            &atol,
-                            &itask,
-                            &mut istate,
-                            &iopt,
-                            rwork.as_mut_ptr(),
-                            &(lrw as i32),
-                            iwork.as_mut_ptr(),
-                            &(liw as i32),
-                            *call_jacobian,
-                            &mf,
-                        );
-                    }
-                    result.push(y.clone());
-                }
-            }
-
-            JacobianGenerator::Lsodes(udf) => {
-                let jacobian_closure = Closure7::new(udf);
-                let call_jacobian = jacobian_closure.code_ptr();
-                for &tout in t.iter() {
-                    unsafe {
-                        dlsodes_(
-                            *call,
-                            &(n as i32),
-                            y.as_mut_ptr(),
-                            &mut t0,
-                            &tout,
-                            &itol,
-                            &rtol,
-                            &atol,
-                            &itask,
-                            &mut istate,
-                            &iopt,
-                            rwork.as_mut_ptr(),
-                            &(lrw as i32),
-                            iwork.as_mut_ptr(),
-                            &(liw as i32),
-                            *call_jacobian,
-                            &mf,
-                        );
-                    }
-                    result.push(y.clone());
-                }
-            }
-        }
-        result
-    }
-
     pub fn new<F>(dydt: F) -> Self
     where
         F: 'a + Fn(&[f64], f64) -> Vec<f64>,
@@ -450,13 +122,11 @@ impl<'a> BDF<'a> {
                  _mu: *const c_int,
                  _pd: *mut c_double,
                  _nr: *const c_int| {};
-        Self {
+        Self::Dense(Lsode {
             dydt: Box::new(dydt),
-            jacobian: Jacobian {
-                mf: Generator::InternalFull,
-                udf: JacobianGenerator::Lsode(Box::new(g)),
-            },
-        }
+            mf: dlsode::Generator::InternalFull,
+            udf: Box::new(g),
+        })
     }
 
     /// Default
@@ -469,12 +139,18 @@ impl<'a> BDF<'a> {
                  _mu: *const c_int,
                  _pd: *mut c_double,
                  _nr: *const c_int| {};
-        Self {
-            jacobian: Jacobian {
-                mf: Generator::InternalFull,
-                udf: JacobianGenerator::Lsode(Box::new(g)),
-            },
-            ..self
+        use BDF::*;
+        match self {
+            Dense(odepack) => Dense(Lsode {
+                mf: dlsode::Generator::InternalFull,
+                udf: Box::new(g),
+                ..odepack
+            }),
+            Sparse(odepack) => Dense(Lsode {
+                mf: dlsode::Generator::InternalFull,
+                udf: Box::new(g),
+                dydt: odepack.dydt,
+            }),
         }
     }
 
@@ -527,12 +203,18 @@ impl<'a> BDF<'a> {
             let dy_new = udf(y, t);
             dy.assign(&dy_new);
         };
-        Self {
-            jacobian: Jacobian {
-                mf: Generator::UserSuppliedFull,
-                udf: JacobianGenerator::Lsode(Box::new(g)),
-            },
-            ..self
+        use BDF::*;
+        match self {
+            Dense(odepack) => Dense(Lsode {
+                mf: dlsode::Generator::UserSuppliedFull,
+                udf: Box::new(g),
+                ..odepack
+            }),
+            Sparse(odepack) => Dense(Lsode {
+                mf: dlsode::Generator::UserSuppliedFull,
+                udf: Box::new(g),
+                dydt: odepack.dydt,
+            }),
         }
     }
 
@@ -558,12 +240,18 @@ impl<'a> BDF<'a> {
                  _mu: *const c_int,
                  _pd: *mut c_double,
                  _nr: *const c_int| {};
-        Self {
-            jacobian: Jacobian {
-                mf: Generator::InternalBanded(ml, mu),
-                udf: JacobianGenerator::Lsode(Box::new(g)),
-            },
-            ..self
+        use BDF::*;
+        match self {
+            Dense(odepack) => Dense(Lsode {
+                mf: dlsode::Generator::InternalBanded(ml, mu),
+                udf: Box::new(g),
+                ..odepack
+            }),
+            Sparse(odepack) => Dense(Lsode {
+                mf: dlsode::Generator::InternalBanded(ml, mu),
+                udf: Box::new(g),
+                dydt: odepack.dydt,
+            }),
         }
     }
 
@@ -603,12 +291,18 @@ impl<'a> BDF<'a> {
                 dy.assign(dy_new);
             }
         };
-        Self {
-            jacobian: Jacobian {
-                mf: Generator::UserSuppliedBanded(ml, mu),
-                udf: JacobianGenerator::Lsode(Box::new(g)),
-            },
-            ..self
+        use BDF::*;
+        match self {
+            Dense(odepack) => Dense(Lsode {
+                mf: dlsode::Generator::UserSuppliedBanded(ml, mu),
+                udf: Box::new(g),
+                ..odepack
+            }),
+            Sparse(odepack) => Dense(Lsode {
+                mf: dlsode::Generator::UserSuppliedBanded(ml, mu),
+                udf: Box::new(g),
+                dydt: odepack.dydt,
+            }),
         }
     }
 
@@ -679,12 +373,18 @@ impl<'a> BDF<'a> {
                  _ian: *const c_int,
                  _jan: *const c_int,
                  _pd: *mut c_double| {};
-        Self {
-            jacobian: Jacobian {
-                mf: Generator::InternalSparse(max_nnz),
-                udf: JacobianGenerator::Lsodes(Box::new(g)),
-            },
-            ..self
+        use BDF::*;
+        match self {
+            Dense(odepack) => Sparse(Lsodes {
+                mf: dlsodes::Generator::InternalSparse(max_nnz),
+                udf: Box::new(g),
+                dydt: odepack.dydt,
+            }),
+            Sparse(odepack) => Sparse(Lsodes {
+                mf: dlsodes::Generator::InternalSparse(max_nnz),
+                udf: Box::new(g),
+                ..odepack
+            }),
         }
     }
 
@@ -848,12 +548,25 @@ impl<'a> BDF<'a> {
             let pd_new = udf(y, t, j - 1);
             pd.assign(&ArrayView1::from(&pd_new));
         };
-        Self {
-            jacobian: Jacobian {
-                mf: Generator::UserSuppliedSparse(max_nnz),
-                udf: JacobianGenerator::Lsodes(Box::new(g)),
-            },
-            ..self
+        use BDF::*;
+        match self {
+            Dense(odepack) => Sparse(Lsodes {
+                mf: dlsodes::Generator::UserSuppliedSparse(max_nnz),
+                udf: Box::new(g),
+                dydt: odepack.dydt,
+            }),
+            Sparse(odepack) => Sparse(Lsodes {
+                mf: dlsodes::Generator::UserSuppliedSparse(max_nnz),
+                udf: Box::new(g),
+                ..odepack
+            }),
+        }
+    }
+
+    pub fn solve(&self, y0: &[f64], t: &[f64], atol: f64, rtol: f64) -> Vec<Vec<f64>> {
+        match self {
+            Self::Dense(odepack) => odepack.solve(y0, t, atol, rtol),
+            Self::Sparse(odepack) => odepack.solve(y0, t, atol, rtol),
         }
     }
 }
