@@ -72,8 +72,13 @@ impl<'a> Adams<'a> {
             mf: dlsode::Generator::None,
             udf: Box::new(g),
             dydt: Box::new(dydt),
+            max_steps: 500,
         };
         Self { odepack }
+    }
+
+    pub fn max_steps(&mut self, n: usize) {
+        self.odepack.max_steps = n;
     }
 
     pub fn solve(&self, y0: &[f64], t: &[f64], atol: f64, rtol: f64) -> Vec<Vec<f64>> {
@@ -126,6 +131,7 @@ impl<'a> BDF<'a> {
             dydt: Box::new(dydt),
             mf: dlsode::Generator::InternalFull,
             udf: Box::new(g),
+            max_steps: 500,
         })
     }
 
@@ -150,6 +156,7 @@ impl<'a> BDF<'a> {
                 mf: dlsode::Generator::InternalFull,
                 udf: Box::new(g),
                 dydt: odepack.dydt,
+                max_steps: odepack.max_steps,
             }),
         }
     }
@@ -214,6 +221,7 @@ impl<'a> BDF<'a> {
                 mf: dlsode::Generator::UserSuppliedFull,
                 udf: Box::new(g),
                 dydt: odepack.dydt,
+                max_steps: odepack.max_steps,
             }),
         }
     }
@@ -251,6 +259,7 @@ impl<'a> BDF<'a> {
                 mf: dlsode::Generator::InternalBanded(ml, mu),
                 udf: Box::new(g),
                 dydt: odepack.dydt,
+                max_steps: odepack.max_steps,
             }),
         }
     }
@@ -302,6 +311,7 @@ impl<'a> BDF<'a> {
                 mf: dlsode::Generator::UserSuppliedBanded(ml, mu),
                 udf: Box::new(g),
                 dydt: odepack.dydt,
+                max_steps: odepack.max_steps,
             }),
         }
     }
@@ -379,6 +389,7 @@ impl<'a> BDF<'a> {
                 mf: dlsodes::Generator::InternalSparse(max_nnz),
                 udf: Box::new(g),
                 dydt: odepack.dydt,
+                max_steps: odepack.max_steps,
             }),
             Sparse(odepack) => Sparse(Lsodes {
                 mf: dlsodes::Generator::InternalSparse(max_nnz),
@@ -554,6 +565,7 @@ impl<'a> BDF<'a> {
                 mf: dlsodes::Generator::UserSuppliedSparse(max_nnz),
                 udf: Box::new(g),
                 dydt: odepack.dydt,
+                max_steps: odepack.max_steps,
             }),
             Sparse(odepack) => Sparse(Lsodes {
                 mf: dlsodes::Generator::UserSuppliedSparse(max_nnz),
