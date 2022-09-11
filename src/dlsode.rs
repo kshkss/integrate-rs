@@ -77,6 +77,7 @@ pub struct Lsode<'a> {
     pub dydt: Box<dyn 'a + Fn(&[f64], f64) -> Vec<f64>>,
     pub mf: Generator,
     pub udf: JacobianGenerator<'a>,
+    pub max_steps: usize,
 }
 
 impl<'a> Lsode<'a> {
@@ -106,7 +107,7 @@ impl<'a> Lsode<'a> {
 
     fn integer_work_space(&self, n_eq: usize) -> Vec<c_int> {
         use Generator::*;
-        match self.mf {
+        let mut iwork = match self.mf {
             None => vec![0_i32; 20],
             InternalFull | UserSuppliedFull => vec![0_i32; 22 + n_eq],
             InternalBanded(ml, mu) | UserSuppliedBanded(ml, mu) => {
@@ -115,7 +116,9 @@ impl<'a> Lsode<'a> {
                 iwork[1] = mu as c_int;
                 iwork
             }
-        }
+        };
+        iwork[7] = self.max_steps as c_int;
+        iwork
     }
 
     pub fn solve(&self, y0: &[f64], t: &[f64], atol: f64, rtol: f64) -> Vec<Vec<f64>> {

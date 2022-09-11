@@ -62,6 +62,7 @@ pub struct Lsodes<'a> {
     pub dydt: Box<dyn 'a + Fn(&[f64], f64) -> Vec<f64>>,
     pub mf: Generator,
     pub udf: JacobianGenerator<'a>,
+    pub max_steps: usize,
 }
 
 impl<'a> Lsodes<'a> {
@@ -91,9 +92,11 @@ impl<'a> Lsodes<'a> {
 
     fn integer_work_space(&self, n_eq: usize) -> Vec<c_int> {
         use Generator::*;
-        match self.mf {
+        let iwork = match self.mf {
             InternalSparse(_) | UserSuppliedSparse(_) => vec![0_i32; 30],
-        }
+        };
+        // TODO: set max_steps by modifying iwork
+        iwork
     }
 
     pub fn solve(&self, y0: &[f64], t: &[f64], atol: f64, rtol: f64) -> Vec<Vec<f64>> {
