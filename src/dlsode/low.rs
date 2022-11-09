@@ -4,6 +4,7 @@ use libc::{c_double, c_int};
 extern "C" {
 /// Call `DLSODE` subroutine from ODEPACK
 ///
+///```ignore
 ///***PURPOSE  Livermore Solver for Ordinary Differential Equations.
 ///            DLSODE solves the initial-value problem for stiff or
 ///            nonstiff systems of first-order ODE's,
@@ -1112,6 +1113,7 @@ extern "C" {
 ///     - Substitute a max-norm of (v(i)*w(i)) for the rms-norm, or
 ///     - Ignore some components of v in the norm, with the effect of
 ///       suppressing the error control on those components of Y.
+/// ```
     pub fn dlsode_(
         f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
         neq: &c_int,
@@ -1142,6 +1144,7 @@ extern "C" {
 
 /// Call `DLSODES` subroutine from ODEPACK
 ///
+/// ```ignore
 /// DLSODES solves the initial value problem for stiff or nonstiff
 /// systems of first order ODEs,
 ///     dy/dt = f(t,y) ,  or, in component form,
@@ -2291,6 +2294,7 @@ extern "C" {
 ///   -substitute a max-norm of (V(i)*W(i)) for the RMS-norm, or
 ///   -ignore some components of V in the norm, with the effect of
 ///    suppressing the error control on those components of y.
+/// ```
     pub fn dlsodes_(
         f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
         neq: &c_int,

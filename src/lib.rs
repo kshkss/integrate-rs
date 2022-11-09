@@ -14,7 +14,7 @@ pub extern "C" fn fake_jacobian(
     _nr: *const c_int,
 ) {
 }
-mod dlsode;
+pub mod dlsode;
 use dlsode::Lsode;
 mod dlsodes;
 use dlsodes::Lsodes;
