@@ -117,7 +117,7 @@ impl<'a> Lsode<'a> {
                 iwork
             }
         };
-        iwork[7] = self.max_steps as c_int;
+        iwork[5] = self.max_steps as c_int;
         iwork
     }
 
@@ -147,7 +147,7 @@ impl<'a> Lsode<'a> {
 
         let itol = 1;
         let itask = 1;
-        let iopt = 0;
+        let iopt = 1;
         let mut istate = 1;
         let mf = self.method_flag();
 

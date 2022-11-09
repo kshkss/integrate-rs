@@ -135,6 +135,20 @@ impl<'a> BDF<'a> {
         })
     }
 
+    pub fn max_steps(self, max_steps: usize) -> Self {
+        use BDF::*;
+        match self {
+            Dense(odepack) => Dense(Lsode {
+                max_steps,
+                ..odepack
+            }),
+            Sparse(odepack) => Sparse(Lsodes {
+                max_steps,
+                ..odepack
+            }),
+        }
+     }
+
     /// Default
     ///
     pub fn gen_full_jacobian(self) -> Self {
