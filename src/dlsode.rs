@@ -3,10 +3,7 @@ use libffi::high::Closure4;
 use libffi::high::Closure7;
 use std::slice;
 
-pub mod low;
-pub mod mid;
-pub mod high;
-use low::dlsode_;
+use super::odepack::low::dlsode_;
 
 /// A dummy function to pass to `dlsode_` in case the user does not want to specify a Jacobian.
 pub extern "C" fn fake_jacobian(

@@ -3,7 +3,7 @@ use libffi::high::Closure4;
 use libffi::high::Closure7;
 use std::slice;
 
-use super::dlsode::low::dlsodes_;
+use super::odepack::low::dlsodes_;
 
 use super::FLAG;
 
