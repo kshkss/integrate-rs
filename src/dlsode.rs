@@ -4,6 +4,7 @@ use libffi::high::Closure7;
 use std::slice;
 
 pub mod low;
+pub mod mid;
 use low::dlsode_;
 
 /// A dummy function to pass to `dlsode_` in case the user does not want to specify a Jacobian.
