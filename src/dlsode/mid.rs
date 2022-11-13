@@ -12,8 +12,8 @@ lazy_static! {
 }
 
 pub fn dlsode<'a, 'b>(
-    dydt: &(impl 'a + Fn(&'b [f64], f64, &'b mut [f64]) + ?Sized),
-    jac: &(impl 'a + Fn(&'b [f64], f64, &'b mut [f64]) + ?Sized),
+    dydt: &(impl 'a + Fn(f64, &'b [f64], &'b mut [f64]) + ?Sized),
+    jac: &(impl 'a + Fn(f64, &'b [f64], &'b mut [f64]) + ?Sized),
     y: &mut [f64],
     mut t0: f64,
     t1: f64,
@@ -32,7 +32,7 @@ pub fn dlsode<'a, 'b>(
                     *t_ptr,
                 )
             };
-            dydt(y, t, dy);
+            dydt(t, y, dy);
         };
     let closure = Closure4::new(&f);
     let call = closure.code_ptr();
@@ -51,7 +51,7 @@ pub fn dlsode<'a, 'b>(
             let pd = slice::from_raw_parts_mut(pd_ptr, y.len() * nrow);
             (pd, y, t)
         };
-        jac(y, t, pd);
+        jac(t, y, pd);
     };
     let closure2 = Closure7::new(&dfdy);
     let call2 = closure2.code_ptr();
@@ -91,8 +91,8 @@ pub fn dlsode<'a, 'b>(
 }
 
 pub fn dlsodes<'a, 'b>(
-    dydt: &(impl 'a + Fn(&'b [f64], f64, &'b mut [f64]) + ?Sized),
-    jac: &(impl 'a + Fn(&'b [f64], f64, usize, &'b mut [f64]) + ?Sized),
+    dydt: &(impl 'a + Fn(f64, &'b [f64], &'b mut [f64]) + ?Sized),
+    jac: &(impl 'a + Fn(f64, &'b [f64], usize, &'b mut [f64]) + ?Sized),
     y0: &mut [f64],
     mut t0: f64,
     t1: f64,
@@ -111,7 +111,7 @@ pub fn dlsodes<'a, 'b>(
                     *t_ptr,
                 )
             };
-            dydt(y, t, dy);
+            dydt(t, y, dy);
         };
     let closure = Closure4::new(&f);
     let call = closure.code_ptr();
@@ -132,7 +132,7 @@ pub fn dlsodes<'a, 'b>(
                 *t_ptr,
             )
         };
-        jac(y, t, j - 1, pd);
+        jac(t, y, j - 1, pd);
     };
     let closure2 = Closure7::new(&jac);
     let call2 = closure2.code_ptr();
