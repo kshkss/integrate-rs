@@ -64,29 +64,29 @@ impl<'a> Jac<'a> {
         }
     }
 
-    fn integer_work_space(&self, n_eq: usize, max_steps: usize) -> Vec<i32> {
+    fn integer_work_space(&self, n_eq: usize, option: &Control) -> Vec<i32> {
         use Jac::*;
         match self {
             NoJac => {
                 let mut iwork = vec![0_i32; 20];
-                iwork[5] = max_steps as i32;
+                iwork[5] = option.max_steps as i32;
                 iwork
             }
             InternalFull | UserSuppliedFull { .. } => {
                 let mut iwork = vec![0_i32; 22 + n_eq];
-                iwork[5] = max_steps as i32;
+                iwork[5] = option.max_steps as i32;
                 iwork
             }
             InternalBanded { ml, mu } | UserSuppliedBanded { ml, mu, .. } => {
                 let mut iwork = vec![0_i32; 22 + n_eq];
                 iwork[0] = *ml as i32;
                 iwork[1] = *mu as i32;
-                iwork[5] = max_steps as i32;
+                iwork[5] = option.max_steps as i32;
                 iwork
             }
             InternalSparse { max_nnz } | UserSuppliedSparse { max_nnz, .. } => {
                 let mut iwork = vec![0_i32; 30];
-                iwork[5] = max_steps as i32;
+                iwork[5] = option.max_steps as i32;
                 iwork[17] = *max_nnz as i32;
                 iwork
             }
@@ -94,11 +94,26 @@ impl<'a> Jac<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Control {
+    pub atol: f64,
+    pub rtol: f64,
+    pub max_steps: usize,
+}
+
+impl Default for Control {
+    fn default() -> Self {
+        Self {
+            atol: 1e-8,
+            rtol: 1e-8,
+            max_steps: 500,
+        }
+    }
+}
+
 pub struct Adam<'a> {
-    atol: f64,
-    rtol: f64,
-    max_steps: usize,
     f: Rc<dyn 'a + Fn(f64, &[f64], &mut [f64])>,
+    option: Control,
 }
 
 impl<'a> Adam<'a> {
@@ -126,33 +141,27 @@ impl<'a> Adam<'a> {
     ///
     /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
     /// ```
-    pub fn new(f: impl 'a + Fn(f64, &[f64], &mut [f64])) -> Self {
+    pub fn new(f: impl 'a + Fn(f64, &[f64], &mut [f64]), option: Control) -> Self {
         Self {
-            atol: 1e-8,
-            rtol: 1e-8,
-            max_steps: 500,
             f: Rc::new(f),
+            option,
         }
     }
 
     pub fn solve(&self, y0: &[f64], t: (f64, f64)) -> Vec<f64> {
         let lsode = BDF {
-            atol: self.atol,
-            rtol: self.rtol,
-            max_steps: self.max_steps,
-            jac: Jac::NoJac,
             f: Rc::clone(&self.f),
+            jac: Jac::NoJac,
+            option: self.option.clone(),
         };
         lsode.solve(y0, t)
     }
 }
 
 pub struct BDF<'a> {
-    atol: f64,
-    rtol: f64,
-    max_steps: usize,
-    jac: Jac<'a>,
     f: Rc<dyn 'a + Fn(f64, &[f64], &mut [f64])>,
+    jac: Jac<'a>,
+    option: Control,
 }
 
 impl<'a> BDF<'a> {
@@ -180,13 +189,11 @@ impl<'a> BDF<'a> {
     ///
     /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
     /// ```
-    pub fn new(f: impl 'a + Fn(f64, &[f64], &mut [f64])) -> Self {
+    pub fn new(f: impl 'a + Fn(f64, &[f64], &mut [f64]), option: Control) -> Self {
         Self {
-            atol: 1e-8,
-            rtol: 1e-8,
-            max_steps: 500,
-            jac: Jac::InternalFull,
             f: Rc::new(f),
+            jac: Jac::InternalFull,
+            option,
         }
     }
 
@@ -492,7 +499,7 @@ impl<'a> BDF<'a> {
         let mut y = y0.to_vec();
         let mf = self.jac.method_flag();
         let mut rwork = self.jac.real_work_space(y0.len());
-        let mut iwork = self.jac.integer_work_space(y0.len(), self.max_steps);
+        let mut iwork = self.jac.integer_work_space(y0.len(), &self.option);
 
         match self.jac {
             Jac::NoJac | Jac::InternalFull | Jac::InternalBanded { .. } => {
@@ -505,8 +512,8 @@ impl<'a> BDF<'a> {
                     &mut y,
                     t.0,
                     t.1,
-                    self.rtol,
-                    self.atol,
+                    self.option.rtol,
+                    self.option.atol,
                     &mut rwork,
                     &mut iwork,
                     mf,
@@ -523,8 +530,8 @@ impl<'a> BDF<'a> {
                     &mut y,
                     t.0,
                     t.1,
-                    self.rtol,
-                    self.atol,
+                    self.option.rtol,
+                    self.option.atol,
                     &mut rwork,
                     &mut iwork,
                     mf,
@@ -545,8 +552,8 @@ impl<'a> BDF<'a> {
                     &mut y,
                     t.0,
                     t.1,
-                    self.rtol,
-                    self.atol,
+                    self.option.rtol,
+                    self.option.atol,
                     &mut rwork,
                     &mut iwork,
                     mf,
@@ -559,8 +566,8 @@ impl<'a> BDF<'a> {
                 &mut y,
                 t.0,
                 t.1,
-                self.rtol,
-                self.atol,
+                self.option.rtol,
+                self.option.atol,
                 &mut rwork,
                 &mut iwork,
                 mf,
