@@ -130,14 +130,14 @@ impl<'a> Adams<'a> {
     /// # Example
     ///
     /// ```
+    /// use integrate::odepack::{Adams, Control};
+    ///
     /// let y0 = [1.0];
     /// let ts = vec![0.0, 1.0];
-    /// let f = |y: &[f64], t: f64| {
-    ///     let mut dy = vec![0.0];
+    /// let f = |t: f64, y: &[f64], dy: &mut [f64]| {
     ///     dy[0] = t * y[0];
-    ///     dy
-    ///     };
-    /// let sol = integrate::Adams::new(f).solve(&y0, &ts, 1e-6, 1e-6);
+    /// };
+    /// let sol = Adams::new(&f, Control::default()).run(&ts, &y0);
     ///
     /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
     /// ```
