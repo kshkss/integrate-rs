@@ -111,12 +111,12 @@ impl Default for Control {
     }
 }
 
-pub struct Adam<'a> {
+pub struct Adams<'a> {
     f: Rc<dyn 'a + Fn(f64, &[f64], &mut [f64])>,
     option: Control,
 }
 
-impl<'a> Adam<'a> {
+impl<'a> Adams<'a> {
     /// Solves system of ODEs for times in `t`.
     /// First time in `t` has to be the initial time.
     ///
