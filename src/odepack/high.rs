@@ -148,13 +148,13 @@ impl<'a> Adam<'a> {
         }
     }
 
-    pub fn solve(&self, y0: &[f64], t: (f64, f64)) -> Vec<f64> {
+    pub fn run(&self, t: &[f64], y0: &[f64]) -> Vec<Vec<f64>> {
         let lsode = BDF {
             f: Rc::clone(&self.f),
             jac: Jac::NoJac,
             option: self.option.clone(),
         };
-        lsode.solve(y0, t)
+        lsode.run(t, y0)
     }
 }
 
@@ -495,11 +495,23 @@ impl<'a> BDF<'a> {
         }
     }
 
-    pub fn solve(&self, y0: &[f64], t: (f64, f64)) -> Vec<f64> {
+    pub fn run(&self, t: &[f64], y0: &[f64]) -> Vec<Vec<f64>> {
+        let mut ys = Vec::with_capacity(t.len());
         let mut y = y0.to_vec();
+        let mut t0 = t[0];
+        for &t1 in &t[1..] {
+            ys.push(y.to_owned());
+            self.step((t0, t1), &mut y);
+            t0 = t1;
+        }
+        ys.push(y);
+        ys
+    }
+
+    fn step(&self, t: (f64, f64), y: &mut [f64]) {
         let mf = self.jac.method_flag();
-        let mut rwork = self.jac.real_work_space(y0.len());
-        let mut iwork = self.jac.integer_work_space(y0.len(), &self.option);
+        let mut rwork = self.jac.real_work_space(y.len());
+        let mut iwork = self.jac.integer_work_space(y.len(), &self.option);
 
         match self.jac {
             Jac::NoJac | Jac::InternalFull | Jac::InternalBanded { .. } => {
@@ -509,7 +521,7 @@ impl<'a> BDF<'a> {
                 mid::dlsode(
                     self.f.as_ref(),
                     &jac,
-                    &mut y,
+                    y,
                     t.0,
                     t.1,
                     self.option.rtol,
@@ -527,7 +539,7 @@ impl<'a> BDF<'a> {
                 mid::dlsodes(
                     self.f.as_ref(),
                     &jac,
-                    &mut y,
+                    y,
                     t.0,
                     t.1,
                     self.option.rtol,
@@ -549,7 +561,7 @@ impl<'a> BDF<'a> {
                 mid::dlsode(
                     self.f.as_ref(),
                     &jac,
-                    &mut y,
+                    y,
                     t.0,
                     t.1,
                     self.option.rtol,
@@ -563,7 +575,7 @@ impl<'a> BDF<'a> {
             Jac::UserSuppliedSparse { ref jac, .. } => mid::dlsodes(
                 self.f.as_ref(),
                 &jac,
-                &mut y,
+                y,
                 t.0,
                 t.1,
                 self.option.rtol,
@@ -573,7 +585,5 @@ impl<'a> BDF<'a> {
                 mf,
             ),
         }
-
-        y
     }
 }
