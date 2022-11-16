@@ -1,17 +1,16 @@
 use super::mid;
 use ndarray::prelude::*;
-use std::rc::Rc;
 
 enum Jac<'a> {
     NoJac,
     UserSuppliedFull {
-        jac: Box<dyn 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)>,
+        jac: &'a (dyn 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)),
     },
     InternalFull,
     UserSuppliedBanded {
         ml: usize,
         mu: usize,
-        jac: Box<dyn 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)>,
+        jac: &'a (dyn 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)),
     },
     InternalBanded {
         ml: usize,
@@ -19,7 +18,7 @@ enum Jac<'a> {
     },
     UserSuppliedSparse {
         max_nnz: usize,
-        jac: Box<dyn 'a + Fn(f64, &[f64], usize, &mut [f64])>,
+        jac: &'a (dyn 'a + Fn(f64, &[f64], usize, &mut [f64])),
     },
     InternalSparse {
         max_nnz: usize,
@@ -112,7 +111,7 @@ impl Default for Control {
 }
 
 pub struct Adams<'a> {
-    f: Rc<dyn 'a + Fn(f64, &[f64], &mut [f64])>,
+    f: &'a (dyn 'a + Fn(f64, &[f64], &mut [f64])),
     option: Control,
 }
 
@@ -141,16 +140,16 @@ impl<'a> Adams<'a> {
     ///
     /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
     /// ```
-    pub fn new(f: impl 'a + Fn(f64, &[f64], &mut [f64]), option: Control) -> Self {
+    pub fn new(f: &'a (impl 'a + Fn(f64, &[f64], &mut [f64])), option: Control) -> Self {
         Self {
-            f: Rc::new(f),
+            f,
             option,
         }
     }
 
     pub fn run(&self, t: &[f64], y0: &[f64]) -> Vec<Vec<f64>> {
         let lsode = BDF {
-            f: Rc::clone(&self.f),
+            f: self.f,
             jac: Jac::NoJac,
             option: self.option.clone(),
         };
@@ -159,7 +158,7 @@ impl<'a> Adams<'a> {
 }
 
 pub struct BDF<'a> {
-    f: Rc<dyn 'a + Fn(f64, &[f64], &mut [f64])>,
+    f: &'a (dyn 'a + Fn(f64, &[f64], &mut [f64])),
     jac: Jac<'a>,
     option: Control,
 }
@@ -189,9 +188,9 @@ impl<'a> BDF<'a> {
     ///
     /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
     /// ```
-    pub fn new(f: impl 'a + Fn(f64, &[f64], &mut [f64]), option: Control) -> Self {
+    pub fn new(f: &'a (impl 'a + Fn(f64, &[f64], &mut [f64])), option: Control) -> Self {
         Self {
-            f: Rc::new(f),
+            f,
             jac: Jac::InternalFull,
             option,
         }
@@ -230,9 +229,9 @@ impl<'a> BDF<'a> {
     ///     approx::assert_abs_diff_eq!(y[1], -(-t).exp() + (-1000. * t).exp(), epsilon = 1e-3);
     /// }
     /// ```
-    pub fn gen_full_jacobian_by(self, udf: impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)) -> Self {
+    pub fn gen_full_jacobian_by(self, jac: &'a (impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>))) -> Self {
         Self {
-            jac: Jac::UserSuppliedFull { jac: Box::new(udf) },
+            jac: Jac::UserSuppliedFull { jac },
             ..self
         }
     }
@@ -273,13 +272,13 @@ impl<'a> BDF<'a> {
         self,
         ml: usize,
         mu: usize,
-        udf: impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>),
+        jac: &'a (impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)),
     ) -> Self {
         Self {
             jac: Jac::UserSuppliedBanded {
                 ml,
                 mu,
-                jac: Box::new(udf),
+                jac,
             },
             ..self
         }
@@ -487,12 +486,12 @@ impl<'a> BDF<'a> {
     pub fn gen_sparse_jacobian_by(
         self,
         max_nnz: usize,
-        udf: impl 'a + Fn(f64, &[f64], usize, &mut [f64]),
+        jac: &'a (impl 'a + Fn(f64, &[f64], usize, &mut [f64])),
     ) -> Self {
         Self {
             jac: Jac::UserSuppliedSparse {
                 max_nnz,
-                jac: Box::new(udf),
+                jac,
             },
             ..self
         }
@@ -522,7 +521,7 @@ impl<'a> BDF<'a> {
                     unreachable!();
                 };
                 mid::dlsode(
-                    self.f.as_ref(),
+                    self.f,
                     &jac,
                     y,
                     t.0,
@@ -540,7 +539,7 @@ impl<'a> BDF<'a> {
                     unreachable!();
                 };
                 mid::dlsodes(
-                    self.f.as_ref(),
+                    self.f,
                     &jac,
                     y,
                     t.0,
@@ -562,7 +561,7 @@ impl<'a> BDF<'a> {
                     jac(t, y, pd);
                 };
                 mid::dlsode(
-                    self.f.as_ref(),
+                    self.f,
                     &jac,
                     y,
                     t.0,
@@ -576,7 +575,7 @@ impl<'a> BDF<'a> {
             }
 
             Jac::UserSuppliedSparse { ref jac, .. } => mid::dlsodes(
-                self.f.as_ref(),
+                self.f,
                 &jac,
                 y,
                 t.0,
