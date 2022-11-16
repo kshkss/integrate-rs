@@ -289,6 +289,7 @@ impl<'a> BDF<'a> {
     ///
     /// ```
     /// extern crate approx;
+    /// use integrate::odepack::{BDF, Control};
     ///
     /// const RK1: f64 = 0.1;
     /// const RK2: f64 = 10.;
@@ -310,30 +311,29 @@ impl<'a> BDF<'a> {
     /// const RK18:f64 = 2.5;
     /// const RK19:f64 = 50.;
     /// const RK20:f64 = 50.;
-    /// let f = |y: &[f64], t: f64| {
-    /// vec![ -RK1 * y[0],
-    ///  RK1 * y[0] + RK11 * RK14 * y[3] + RK19 * RK14 * y[4] - RK3 * y[1] * y[2] - RK15 * y[1] *
-    ///  y[11] - RK2 * y[1],
-    ///  RK2 * y[1] - RK5 * y[2] - RK3 * y[1] * y[2] - RK7 * y[9] * y[2] + RK11 * RK14 * y[3] + RK12
-    ///  * RK14 * y[5],
-    ///  RK3 * y[1] * y[2] - RK11 * RK14 * y[3] - RK4 * y[3],
-    ///  RK15 * y[1] * y[11] - RK19 * RK14 * y[4] - RK16 * y[4],
-    ///  RK7 * y[9] * y[2] - RK12 * RK14 * y[5] - RK8 * y[5],
-    ///  RK17 * y[9] * y[11] - RK20 * RK14 * y[6] - RK18 * y[6],
-    ///  RK9 * y[9] - RK13 * RK14 * y[7] - RK10 * y[7],
-    ///  RK4 * y[3] + RK16 * y[4] + RK8 * y[5] + RK18 * y[6],
-    ///  RK5 * y[2] + RK12 * RK14 * y[5] + RK20 * RK14 * y[6] + RK13 * RK14 * y[7] - RK7 * y[9] *
-    ///  y[2] - RK17 * y[9] * y[11] - RK6 * y[9] - RK9 * y[9],
-    ///  RK10 * y[7],
-    ///  RK6 * y[9] + RK19 * RK14 * y[4] + RK20 * RK14 * y[6] - RK15 * y[1] * y[11] - RK17 * y[9]
-    ///  * y[11],
-    ///  ]
+    /// let f = |t: f64, y: &[f64], dy: &mut [f64]| {
+    ///  dy[0] = -RK1 * y[0];
+    ///  dy[1] = RK1 * y[0] + RK11 * RK14 * y[3] + RK19 * RK14 * y[4] - RK3 * y[1] * y[2] - RK15 * y[1] *
+    ///     y[11] - RK2 * y[1];
+    ///  dy[2] = RK2 * y[1] - RK5 * y[2] - RK3 * y[1] * y[2] - RK7 * y[9] * y[2] + RK11 * RK14 * y[3] + RK12
+    ///     * RK14 * y[5];
+    ///  dy[3] = RK3 * y[1] * y[2] - RK11 * RK14 * y[3] - RK4 * y[3];
+    ///  dy[4] = RK15 * y[1] * y[11] - RK19 * RK14 * y[4] - RK16 * y[4];
+    ///  dy[5] = RK7 * y[9] * y[2] - RK12 * RK14 * y[5] - RK8 * y[5];
+    ///  dy[6] = RK17 * y[9] * y[11] - RK20 * RK14 * y[6] - RK18 * y[6];
+    ///  dy[7] = RK9 * y[9] - RK13 * RK14 * y[7] - RK10 * y[7];
+    ///  dy[8] = RK4 * y[3] + RK16 * y[4] + RK8 * y[5] + RK18 * y[6];
+    ///  dy[9] = RK5 * y[2] + RK12 * RK14 * y[5] + RK20 * RK14 * y[6] + RK13 * RK14 * y[7] - RK7 * y[9] *
+    ///     y[2] - RK17 * y[9] * y[11] - RK6 * y[9] - RK9 * y[9];
+    ///  dy[10] = RK10 * y[7];
+    ///  dy[11] = RK6 * y[9] + RK19 * RK14 * y[4] + RK20 * RK14 * y[6] - RK15 * y[1] * y[11] - RK17 * y[9]
+    ///     * y[11];
     /// };
     /// let y0 = [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,];
     /// let ts = vec![0., 0.1];
-    /// let sol = integrate::BDF::new(f)
+    /// let sol = BDF::new(&f, Control { rtol: 1e-6, atol: 1e-6, ..Control::default()})
     ///     .gen_sparse_jacobian(58)
-    ///     .solve(&y0, &ts, 1e-6, 1e-6);
+    ///     .run(&ts, &y0);
     ///
     /// for (&result, &gt) in sol[1].iter().zip(
     ///        &[ 9.90050e-01,  6.28228e-03,  3.65313e-03,  7.51934e-07,
