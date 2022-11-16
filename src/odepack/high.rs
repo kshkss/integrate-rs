@@ -241,13 +241,17 @@ impl<'a> BDF<'a> {
     ///
     /// ```
     /// extern crate approx;
+    /// use integrate::odepack::{BDF, Control};
     ///
     /// let y0 = [1., 1.];
     /// let ts = vec![0., 1.];
-    /// let f = |y: &[f64], t: f64| vec![t * y[0], (t + 2.) * y[1]];
-    /// let sol = integrate::BDF::new(f)
+    /// let f = |t: f64, y: &[f64], dy: &mut [f64]| {
+    ///     dy[0] = t * y[0];
+    ///     dy[1] = (t + 2.) * y[1];
+    /// };
+    /// let sol = BDF::new(&f, Control::default())
     ///     .gen_banded_jacobian(0, 0)
-    ///     .solve(&y0, &ts, 1e-6, 1e-6);
+    ///     .run(&ts, &y0);
     ///
     /// approx::assert_abs_diff_eq!(sol[1][0], y0[0]*0.5_f64.exp(), epsilon = 1e-3);
     /// ```
