@@ -209,20 +209,21 @@ impl<'a> BDF<'a> {
     /// ```
     /// extern crate approx;
     /// use ndarray::prelude::*;
+    /// use integrate::odepack::{BDF, Control};
     ///
     /// let y0 = [1., 0.];
     /// let ts = Array1::linspace(0., 1., 10).to_vec();
-    /// let f = |y: &[f64], t: f64| vec![
-    ///     998. * y[0] + 1998. * y[1],
-    ///     -999. * y[0] - 1999. * y[1],
-    ///     ];
-    /// let g = |_y: &[f64], _t: f64| array![
-    ///     [998., 1998.],
-    ///     [-999., -1999.],
-    ///     ];
-    /// let sol = integrate::BDF::new(f)
-    ///     .gen_full_jacobian_by(g)
-    ///     .solve(&y0, &ts, 1e-6, 1e-8);
+    /// let f = |t: f64, y: &[f64], dy: &mut [f64]| {
+    ///     dy[0] = 998. * y[0] + 1998. * y[1];
+    ///     dy[1] = -999. * y[0] - 1999. * y[1];
+    ///     };
+    /// let g = |_t: f64, _y: &[f64], mut jac: ArrayViewMut2<f64>| {
+    ///     jac.slice_mut(s![0, ..]).assign(&ArrayView1::from_shape(2, &[998., 1998.]).unwrap());
+    ///     jac.slice_mut(s![1, ..]).assign(&ArrayView1::from_shape(2, &[-999., -1999.]).unwrap());
+    ///     };
+    /// let sol = BDF::new(&f, Control::default())
+    ///     .gen_full_jacobian_by(&g)
+    ///     .run(&ts, &y0);
     ///
     /// for (y, t) in sol.iter().zip(ts) {
     ///     approx::assert_abs_diff_eq!(y[0], 2. * (-t).exp() - (-1000. * t).exp(), epsilon = 1e-3);
