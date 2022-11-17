@@ -110,60 +110,13 @@ impl Default for Control {
     }
 }
 
-pub struct Adams<'a> {
-    f: &'a (dyn 'a + Fn(f64, &[f64], &mut [f64])),
-    option: Control,
-}
-
-impl<'a> Adams<'a> {
-    /// Solves system of ODEs for times in `t`.
-    /// First time in `t` has to be the initial time.
-    ///
-    /// Each equation in the system of ODEs has the form:
-    ///
-    /// > *dy/dt = f(y, t)*
-    ///
-    /// The function expects the function *f* as the first argument `rhs`.
-    /// Initial state is given in `y0`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use integrate::odepack::{Adams, Control};
-    ///
-    /// let y0 = [1.0];
-    /// let ts = vec![0.0, 1.0];
-    /// let f = |t: f64, y: &[f64], dy: &mut [f64]| {
-    ///     dy[0] = t * y[0];
-    /// };
-    /// let sol = Adams::new(&f, Control::default()).run(&ts, &y0);
-    ///
-    /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
-    /// ```
-    pub fn new(f: &'a (impl 'a + Fn(f64, &[f64], &mut [f64])), option: Control) -> Self {
-        Self {
-            f,
-            option,
-        }
-    }
-
-    pub fn run(&self, t: &[f64], y0: &[f64]) -> Vec<Vec<f64>> {
-        let lsode = BDF {
-            f: self.f,
-            jac: Jac::NoJac,
-            option: self.option.clone(),
-        };
-        lsode.run(t, y0)
-    }
-}
-
-pub struct BDF<'a> {
+pub struct Lsode<'a> {
     f: &'a (dyn 'a + Fn(f64, &[f64], &mut [f64])),
     jac: Jac<'a>,
     option: Control,
 }
 
-impl<'a> BDF<'a> {
+impl<'a> Lsode<'a> {
     /// Solves system of ODEs for times in `t`.
     /// First time in `t` has to be the initial time.
     ///
@@ -177,14 +130,14 @@ impl<'a> BDF<'a> {
     /// # Example
     ///
     /// ```
-    /// use integrate::odepack::{BDF, Control};
+    /// use integrate::odepack::{Lsode, Control};
     ///
     /// let y0 = [1.0];
     /// let ts = vec![0.0, 1.0];
     /// let f = |t: f64, y: &[f64], dy: &mut [f64]| {
     ///     dy[0] = t * y[0];
     ///     };
-    /// let sol = BDF::new(&f, Control::default()).run(&ts, &y0);
+    /// let sol = Lsode::new(&f, Control::default()).run(&ts, &y0);
     ///
     /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
     /// ```
@@ -192,6 +145,38 @@ impl<'a> BDF<'a> {
         Self {
             f,
             jac: Jac::InternalFull,
+            option,
+        }
+    }
+
+    /// Solves system of ODEs for times in `t`.
+    /// First time in `t` has to be the initial time.
+    ///
+    /// Each equation in the system of ODEs has the form:
+    ///
+    /// > *dy/dt = f(y, t)*
+    ///
+    /// The function expects the function *f* as the first argument `rhs`.
+    /// Initial state is given in `y0`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use integrate::odepack::{Lsode, Control};
+    ///
+    /// let y0 = [1.0];
+    /// let ts = vec![0.0, 1.0];
+    /// let f = |t: f64, y: &[f64], dy: &mut [f64]| {
+    ///     dy[0] = t * y[0];
+    /// };
+    /// let sol = Lsode::explicit(&f, Control::default()).run(&ts, &y0);
+    ///
+    /// assert!((sol[1][0] - y0[0]*0.5_f64.exp()).abs() < 1e-3, "error too large");
+    /// ```
+    pub fn explicit(f: &'a (impl 'a + Fn(f64, &[f64], &mut [f64])), option: Control) -> Self {
+        Self {
+            f,
+            jac: Jac::NoJac,
             option,
         }
     }
@@ -208,7 +193,7 @@ impl<'a> BDF<'a> {
     /// ```
     /// extern crate approx;
     /// use ndarray::prelude::*;
-    /// use integrate::odepack::{BDF, Control};
+    /// use integrate::odepack::{Lsode, Control};
     ///
     /// let y0 = [1., 0.];
     /// let ts = Array1::linspace(0., 1., 10).to_vec();
@@ -220,7 +205,7 @@ impl<'a> BDF<'a> {
     ///     jac.slice_mut(s![0, ..]).assign(&ArrayView1::from_shape(2, &[998., 1998.]).unwrap());
     ///     jac.slice_mut(s![1, ..]).assign(&ArrayView1::from_shape(2, &[-999., -1999.]).unwrap());
     ///     };
-    /// let sol = BDF::new(&f, Control::default())
+    /// let sol = Lsode::new(&f, Control::default())
     ///     .gen_full_jacobian_by(&g)
     ///     .run(&ts, &y0);
     ///
@@ -240,7 +225,7 @@ impl<'a> BDF<'a> {
     ///
     /// ```
     /// extern crate approx;
-    /// use integrate::odepack::{BDF, Control};
+    /// use integrate::odepack::{Lsode, Control};
     ///
     /// let y0 = [1., 1.];
     /// let ts = vec![0., 1.];
@@ -248,7 +233,7 @@ impl<'a> BDF<'a> {
     ///     dy[0] = t * y[0];
     ///     dy[1] = (t + 2.) * y[1];
     /// };
-    /// let sol = BDF::new(&f, Control::default())
+    /// let sol = Lsode::new(&f, Control::default())
     ///     .gen_banded_jacobian(0, 0)
     ///     .run(&ts, &y0);
     ///
@@ -288,7 +273,7 @@ impl<'a> BDF<'a> {
     ///
     /// ```
     /// extern crate approx;
-    /// use integrate::odepack::{BDF, Control};
+    /// use integrate::odepack::{Lsode, Control};
     ///
     /// const RK1: f64 = 0.1;
     /// const RK2: f64 = 10.;
@@ -330,7 +315,7 @@ impl<'a> BDF<'a> {
     /// };
     /// let y0 = [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,];
     /// let ts = vec![0., 0.1];
-    /// let sol = BDF::new(&f, Control { rtol: 1e-6, atol: 1e-6, ..Control::default()})
+    /// let sol = Lsode::new(&f, Control { rtol: 1e-6, atol: 1e-6, ..Control::default()})
     ///     .gen_sparse_jacobian(58)
     ///     .run(&ts, &y0);
     ///
@@ -354,7 +339,7 @@ impl<'a> BDF<'a> {
     ///
     /// ```
     /// extern crate approx;
-    /// use integrate::odepack::{BDF, Control};
+    /// use integrate::odepack::{Lsode, Control};
     ///
     /// const RK1: f64 = 0.1;
     /// const RK2: f64 = 10.;
@@ -470,7 +455,7 @@ impl<'a> BDF<'a> {
     /// };
     /// let y0 = [1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,];
     /// let ts = vec![0., 0.1];
-    /// let sol = BDF::new(&f, Control { rtol: 1e-6, atol: 1e-6, ..Control::default()})
+    /// let sol = Lsode::new(&f, Control { rtol: 1e-6, atol: 1e-6, ..Control::default()})
     ///     .gen_sparse_jacobian_by(58, &jac)
     ///     .run(&ts, &y0);
     ///
