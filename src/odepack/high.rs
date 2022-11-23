@@ -214,7 +214,10 @@ impl<'a> Lsode<'a> {
     ///     approx::assert_abs_diff_eq!(y[1], -(-t).exp() + (-1000. * t).exp(), epsilon = 1e-3);
     /// }
     /// ```
-    pub fn gen_full_jacobian_by(self, jac: &'a (impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>))) -> Self {
+    pub fn gen_full_jacobian_by(
+        self,
+        jac: &'a (impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)),
+    ) -> Self {
         Self {
             jac: Jac::UserSuppliedFull { jac },
             ..self
@@ -260,11 +263,7 @@ impl<'a> Lsode<'a> {
         jac: &'a (impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)),
     ) -> Self {
         Self {
-            jac: Jac::UserSuppliedBanded {
-                ml,
-                mu,
-                jac,
-            },
+            jac: Jac::UserSuppliedBanded { ml, mu, jac },
             ..self
         }
     }
@@ -474,10 +473,7 @@ impl<'a> Lsode<'a> {
         jac: &'a (impl 'a + Fn(f64, &[f64], usize, &mut [f64])),
     ) -> Self {
         Self {
-            jac: Jac::UserSuppliedSparse {
-                max_nnz,
-                jac,
-            },
+            jac: Jac::UserSuppliedSparse { max_nnz, jac },
             ..self
         }
     }
