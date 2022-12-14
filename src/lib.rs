@@ -149,7 +149,7 @@ impl<'a> BDF<'a> {
                 ..odepack
             }),
         }
-     }
+    }
 
     /// Default
     ///

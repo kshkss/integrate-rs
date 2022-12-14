@@ -160,7 +160,7 @@ impl<'a> LsodiBandedJacobian<'a> {
         let mut rwork = self.real_work_space(y.len());
         let mut iwork = self.integer_work_space(y.len(), &self.option);
 
-        if let Some(ref jac) = self.jac{
+        if let Some(ref jac) = self.jac {
             let adda = |t: f64, y: &[f64], pd: &mut [f64]| {
                 let mut pd = ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd)
                     .expect("size mismatch");
@@ -273,7 +273,7 @@ impl<'a> LsodiSparseJacobian<'a> {
         let mut rwork = self.real_work_space(y.len());
         let mut iwork = self.integer_work_space(y.len(), &self.option);
 
-        if let Some(ref jac) = self.jac{
+        if let Some(ref jac) = self.jac {
             mid::dlsodis(
                 self.residual,
                 self.adda,
