@@ -1,5 +1,5 @@
-use super::lsode::Control;
 use super::mid;
+use super::Control;
 use ndarray::prelude::*;
 
 pub struct LsodiFullJacobian<'a> {
