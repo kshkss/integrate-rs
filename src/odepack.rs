@@ -8,5 +8,7 @@ lazy_static! {
 pub mod high;
 pub mod mid;
 pub mod low;
+pub mod lsodi;
 
 pub use high::{Lsode, Control};
+pub use lsodi::Lsodi;
