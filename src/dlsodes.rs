@@ -3,39 +3,7 @@ use libffi::high::Closure4;
 use libffi::high::Closure7;
 use std::slice;
 
-#[link(name = "gfortran")]
-extern "C" {
-    /// Call `DLSODES` subroutine from ODEPACK
-    ///
-    /// For info on passed arguments look inside ODEPACK.
-    pub fn dlsodes_(
-        f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
-        neq: &c_int,
-        y: *mut c_double,
-        t: &mut c_double,
-        tout: &c_double,
-        itol: &c_int,
-        rtol: &c_double,
-        atol: &c_double,
-        itask: &c_int,
-        istate: &mut c_int,
-        iopt: &c_int,
-        rwork: *mut c_double,
-        lrw: &c_int,
-        iwork: *mut c_int,
-        liw: &c_int,
-        jac: extern "C" fn(
-            *const c_int,    // neq
-            *const c_double, // t
-            *const c_double, // y
-            *const c_int,    // j
-            *const c_int,    // ian
-            *const c_int,    // jan
-            *mut c_double,   //pdj
-        ),
-        mf: &c_int,
-    );
-}
+use super::odepack::low::dlsodes_;
 
 use super::FLAG;
 

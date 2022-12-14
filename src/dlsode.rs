@@ -3,39 +3,7 @@ use libffi::high::Closure4;
 use libffi::high::Closure7;
 use std::slice;
 
-#[link(name = "gfortran")]
-extern "C" {
-    /// Call `DLSODE` subroutine from ODEPACK
-    ///
-    /// For info on passed arguments look inside ODEPACK.
-    pub fn dlsode_(
-        f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
-        neq: &c_int,
-        y: *mut c_double,
-        t: &mut c_double,
-        tout: &c_double,
-        itol: &c_int,
-        rtol: &c_double,
-        atol: &c_double,
-        itask: &c_int,
-        istate: &mut c_int,
-        iopt: &c_int,
-        rwork: *mut c_double,
-        lrw: &c_int,
-        iwork: *mut c_int,
-        liw: &c_int,
-        jac: extern "C" fn(
-            *const c_int,
-            *const c_double,
-            *const c_double,
-            *const c_int,
-            *const c_int,
-            *mut c_double,
-            *const c_int,
-        ),
-        mf: &c_int,
-    );
-}
+use super::odepack::low::dlsode_;
 
 /// A dummy function to pass to `dlsode_` in case the user does not want to specify a Jacobian.
 pub extern "C" fn fake_jacobian(
@@ -117,7 +85,7 @@ impl<'a> Lsode<'a> {
                 iwork
             }
         };
-        iwork[7] = self.max_steps as c_int;
+        iwork[5] = self.max_steps as c_int;
         iwork
     }
 
@@ -147,7 +115,7 @@ impl<'a> Lsode<'a> {
 
         let itol = 1;
         let itask = 1;
-        let iopt = 0;
+        let iopt = 1;
         let mut istate = 1;
         let mf = self.method_flag();
 

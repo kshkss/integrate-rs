@@ -3,6 +3,8 @@ use libffi::high::Closure4;
 use libffi::high::Closure7;
 use std::slice;
 
+pub mod odepack;
+
 /// A dummy function to pass to `dlsode_` in case the user does not want to specify a Jacobian.
 pub extern "C" fn fake_jacobian(
     _neq: *const c_int,
@@ -14,7 +16,7 @@ pub extern "C" fn fake_jacobian(
     _nr: *const c_int,
 ) {
 }
-mod dlsode;
+pub mod dlsode;
 use dlsode::Lsode;
 mod dlsodes;
 use dlsodes::Lsodes;
@@ -133,6 +135,20 @@ impl<'a> BDF<'a> {
             udf: Box::new(g),
             max_steps: 500,
         })
+    }
+
+    pub fn max_steps(self, max_steps: usize) -> Self {
+        use BDF::*;
+        match self {
+            Dense(odepack) => Dense(Lsode {
+                max_steps,
+                ..odepack
+            }),
+            Sparse(odepack) => Sparse(Lsodes {
+                max_steps,
+                ..odepack
+            }),
+        }
     }
 
     /// Default
