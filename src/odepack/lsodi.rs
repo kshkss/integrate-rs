@@ -1,4 +1,4 @@
-use super::high::Control;
+use super::lsode::Control;
 use super::mid;
 use ndarray::prelude::*;
 

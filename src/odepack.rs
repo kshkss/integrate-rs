@@ -5,10 +5,10 @@ lazy_static! {
     static ref FLAG: Mutex<()> = Mutex::<()>::new(());
 }
 
-pub mod high;
 pub mod low;
+pub mod lsode;
 pub mod lsodi;
 pub mod mid;
 
-pub use high::{Control, Lsode};
+pub use lsode::{Control, Lsode};
 pub use lsodi::Lsodi;
