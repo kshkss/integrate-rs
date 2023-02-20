@@ -10,6 +10,19 @@ pub struct LsodiFullJacobian<'a> {
 }
 
 impl<'a> LsodiFullJacobian<'a> {
+    pub fn new(
+        residual: &'a (impl 'a + Fn(f64, &[f64], &[f64], &mut [f64])),
+        adda: &'a (impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)),
+        jac: &'a (impl 'a + Fn(f64, &[f64], &[f64], ArrayViewMut2<f64>)),
+        option: Control,
+    ) -> Self {
+        Self {
+            residual,
+            adda,
+            jac: Some(jac),
+            option,
+        }
+    }
     fn is_gen_internally(&self) -> bool {
         self.jac.is_none()
     }
@@ -117,6 +130,24 @@ pub struct LsodiBandedJacobian<'a> {
 }
 
 impl<'a> LsodiBandedJacobian<'a> {
+    pub fn new(
+        ml: usize,
+        mu: usize,
+        residual: &'a (impl 'a + Fn(f64, &[f64], &[f64], &mut [f64])),
+        adda: &'a (impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)),
+        jac: &'a (impl 'a + Fn(f64, &[f64], &[f64], ArrayViewMut2<f64>)),
+        option: Control,
+    ) -> Self {
+        Self {
+            ml,
+            mu,
+            residual,
+            adda,
+            jac: Some(jac),
+            option,
+        }
+    }
+
     fn is_gen_internally(&self) -> bool {
         self.jac.is_none()
     }
@@ -224,6 +255,22 @@ pub struct LsodiSparseJacobian<'a> {
 }
 
 impl<'a> LsodiSparseJacobian<'a> {
+    pub fn new(
+        max_nnz: usize,
+        residual: &'a (impl 'a + Fn(f64, &[f64], &[f64], &mut [f64])),
+        adda: &'a (impl 'a + Fn(f64, &[f64], usize, &mut [f64])),
+        jac: &'a (impl 'a + Fn(f64, &[f64], &[f64], usize, &mut [f64])),
+        option: Control,
+    ) -> Self {
+        Self {
+            max_nnz,
+            residual,
+            adda,
+            jac: Some(jac),
+            option,
+        }
+    }
+
     fn is_gen_internally(&self) -> bool {
         self.jac.is_none()
     }
