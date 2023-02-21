@@ -1,3 +1,3 @@
-pub use ndarray;
+pub extern crate ndarray;
 
 pub mod odepack;
