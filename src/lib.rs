@@ -3,6 +3,8 @@ use libffi::high::Closure4;
 use libffi::high::Closure7;
 use std::slice;
 
+pub use ndarray;
+
 pub mod odepack;
 
 /// A dummy function to pass to `dlsode_` in case the user does not want to specify a Jacobian.
