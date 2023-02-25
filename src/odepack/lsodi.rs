@@ -46,18 +46,21 @@ impl<'a> LsodiFullJacobian<'a> {
         iwork
     }
 
-    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> Vec<Vec<f64>> {
+    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
         let mut ys = Vec::with_capacity(t.len());
+        let mut dys = Vec::with_capacity(t.len());
         let mut y = y0.to_vec();
         let mut dy = dy0.to_vec();
         let mut t0 = t[0];
         for &t1 in &t[1..] {
             ys.push(y.to_owned());
+            dys.push(dy.to_owned());
             self.step((t0, t1), &mut y, &mut dy);
             t0 = t1;
         }
         ys.push(y);
-        ys
+        dys.push(dy);
+        (ys, dys)
     }
 
     fn step(&self, t: (f64, f64), y: &mut [f64], dy: &mut [f64]) {
@@ -172,18 +175,21 @@ impl<'a> LsodiBandedJacobian<'a> {
         iwork
     }
 
-    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> Vec<Vec<f64>> {
+    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
         let mut ys = Vec::with_capacity(t.len());
+        let mut dys = Vec::with_capacity(t.len());
         let mut y = y0.to_vec();
         let mut dy = dy0.to_vec();
         let mut t0 = t[0];
         for &t1 in &t[1..] {
             ys.push(y.to_owned());
+            dys.push(dy.to_owned());
             self.step((t0, t1), &mut y, &mut dy);
             t0 = t1;
         }
         ys.push(y);
-        ys
+        dys.push(dy);
+        (ys, dys)
     }
 
     fn step(&self, t: (f64, f64), y: &mut [f64], dy: &mut [f64]) {
@@ -301,18 +307,21 @@ impl<'a> LsodiSparseJacobian<'a> {
         iwork
     }
 
-    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> Vec<Vec<f64>> {
+    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
         let mut ys = Vec::with_capacity(t.len());
+        let mut dys = Vec::with_capacity(t.len());
         let mut y = y0.to_vec();
         let mut dy = dy0.to_vec();
         let mut t0 = t[0];
         for &t1 in &t[1..] {
             ys.push(y.to_owned());
+            dys.push(dy.to_owned());
             self.step((t0, t1), &mut y, &mut dy);
             t0 = t1;
         }
         ys.push(y);
-        ys
+        dys.push(dy);
+        (ys, dys)
     }
 
     fn step(&self, t: (f64, f64), y: &mut [f64], dy: &mut [f64]) {
