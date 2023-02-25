@@ -209,6 +209,7 @@ pub fn dlsodi<'a, 'b>(
                 p_ptr: *mut c_double,
                 nrow_p: *const c_int| {
         let (p, y, t) = unsafe {
+            debug_assert!(*nrow_p == *n || *nrow_p == *_ml + *_mu + 1);
             (
                 slice::from_raw_parts_mut(p_ptr, *n as usize * *nrow_p as usize),
                 slice::from_raw_parts(y_ptr, *n as usize),
@@ -230,6 +231,7 @@ pub fn dlsodi<'a, 'b>(
                nrow_p: *const c_int| {
         let n = unsafe { *neq as usize };
         let (p, y, s, t) = unsafe {
+            debug_assert!(*nrow_p == *neq || *nrow_p == *_ml + *_mu + 1);
             (
                 slice::from_raw_parts_mut(p_ptr, n * *nrow_p as usize),
                 slice::from_raw_parts(y_ptr, n),
