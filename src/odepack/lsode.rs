@@ -1,3 +1,9 @@
+//! Solvers that treat tiff and nonstiff ODE systems of the form *dy/dt = f(t,y)*
+//!
+//! It uses Adams methods (predictor-corrector) in the nonstiff case,
+//! and Backward Differentiation Formula (BDF) methods (the Gear methods)
+//! in the stiff case.
+
 use super::mid;
 use super::Control;
 use ndarray::prelude::*;
@@ -94,6 +100,10 @@ impl<'a> Jac<'a> {
     }
 }
 
+/// Driver for four types of solvers including Adams methods and BDF methods.
+///
+/// Each three BDF solver treats jacobian matrix df/dy as a full matrix, a banded matrix, or 
+/// a sparse matrix.
 pub struct Lsode<'a> {
     f: &'a (dyn 'a + Fn(f64, &[f64], &mut [f64])),
     jac: Jac<'a>,
@@ -234,7 +244,7 @@ impl<'a> Lsode<'a> {
     }
 
     /// The matrix a is stored in `ab` using the matrix diagonal ordered form::
-    ///   ab[mu + i - j][j] == a[i,j]
+    ///   ab[mu + i - j]\[j\] == a\[i,j\]
     /// Example of `ab` (shape of a is (6,6), `u` =1, `l` =2)::
     ///  *   a01  a12  a23  a34  a45
     /// a00  a11  a22  a33  a44  a55
