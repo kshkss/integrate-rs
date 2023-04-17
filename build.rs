@@ -8,21 +8,43 @@ fn main() {
             .flag("-fallow-argument-mismatch")
             .file("src/odepack.f")
             .compile("libodepack.a");
-        cc::Build::new()
-            .flag("-w")
-            // use for version of gfortran 10+
-            .flag("-fallow-argument-mismatch")
-            .file("src/radau.f")
-            .compile("libradau.a");
+        if cfg!(feature = "lapack") {
+            cc::Build::new()
+                .flag("-w")
+                // use for version of gfortran 10+
+                .flag("-fallow-argument-mismatch")
+                .file("src/dc_lapack.f")
+                .file("src/radau.f")
+                .compile("libradau.a");
+        } else {
+            cc::Build::new()
+                .flag("-w")
+                // use for version of gfortran 10+
+                .flag("-fallow-argument-mismatch")
+                .file("src/decsol.f")
+                .file("src/dc_decsol.f")
+                .file("src/radau.f")
+                .compile("libradau.a");
+        }
     } else {
         cc::Build::new()
             .flag("-w")
             .file("src/odepack.f")
             .compile("libodepack.a");
-        cc::Build::new()
-            .flag("-w")
-            .file("src/radau.f")
-            .compile("libradau.a");
+        if cfg!(feature = "lapack") {
+            cc::Build::new()
+                .flag("-w")
+                .file("src/dc_lapack.f")
+                .file("src/radau.f")
+                .compile("libradau.a");
+        } else {
+            cc::Build::new()
+                .flag("-w")
+                .file("src/decsol.f")
+                .file("src/dc_decsol.f")
+                .file("src/radau.f")
+                .compile("libradau.a");
+        }
     }
 
     println!("cargo:rustc-link-lib=static=odepack");
