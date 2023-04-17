@@ -121,7 +121,7 @@ pub fn integer_work_space(
     option: &Control,
 ) -> Vec<i32> {
     let nsmax = 7;
-    let mut iwork = vec![0_i32; (2 + n * (nsmax - 1) / 2 + 20) as usize];
+    let mut iwork = vec![0_i32; ((2 + (nsmax - 1) / 2) * n + 20) as usize];
 
     iwork[1] = option.max_steps as i32;
 
