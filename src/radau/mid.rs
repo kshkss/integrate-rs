@@ -109,7 +109,7 @@ pub fn real_work_space(
     let ljac = jac_type.l(n as i32);
     let lmas = mas_type.l(n as i32);
     let le = jac_type.le(n as i32);
-    let rwork = vec![0_f64; n * (ljac + lmas + nsmax * le + 3 * nsmax + 3) as usize];
+    let rwork = vec![0_f64; n * (ljac + lmas + nsmax * le + 3 * nsmax + 3) as usize + 20];
 
     rwork
 }
