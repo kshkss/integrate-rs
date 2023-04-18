@@ -6,6 +6,8 @@ fn main() {
             .flag("-w")
             // use for version of gfortran 10+
             .flag("-fallow-argument-mismatch")
+            .file("src/odepack_sub2.f")
+            .file("src/odepack_sub1.f")
             .file("src/odepack.f")
             .compile("libodepack.a");
         if cfg!(feature = "lapack") {
@@ -29,6 +31,8 @@ fn main() {
     } else {
         cc::Build::new()
             .flag("-w")
+            .file("src/odepack_sub2.f")
+            .file("src/odepack_sub1.f")
             .file("src/odepack.f")
             .compile("libodepack.a");
         if cfg!(feature = "lapack") {
