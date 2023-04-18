@@ -2,14 +2,29 @@ extern crate cc;
 
 fn main() {
     if cfg!(feature = "latest-gcc") {
-        cc::Build::new()
-            .flag("-w")
-            // use for version of gfortran 10+
-            .flag("-fallow-argument-mismatch")
-            .file("src/odepack_sub2.f")
-            .file("src/odepack_sub1.f")
-            .file("src/odepack.f")
-            .compile("libodepack.a");
+        if cfg!(feature = "blas") {
+            cc::Build::new()
+                .flag("-w")
+                // use for version of gfortran 10+
+                .flag("-fallow-argument-mismatch")
+                .file("src/part_linpack.f")
+                .file("src/opkda2.f")
+                .file("src/opkda1.f")
+                .file("src/opkdmain.f")
+                .compile("libodepack.a");
+            println!("cargo:rustc-link-lib=dylib=blas");
+        } else {
+            cc::Build::new()
+                .flag("-w")
+                // use for version of gfortran 10+
+                .flag("-fallow-argument-mismatch")
+                .file("src/part_blas.f")
+                .file("src/part_linpack.f")
+                .file("src/opkda2.f")
+                .file("src/opkda1.f")
+                .file("src/opkdmain.f")
+                .compile("libodepack.a");
+        }
         if cfg!(feature = "lapack") {
             cc::Build::new()
                 .flag("-w")
@@ -30,12 +45,24 @@ fn main() {
                 .compile("libradau.a");
         }
     } else {
-        cc::Build::new()
-            .flag("-w")
-            .file("src/odepack_sub2.f")
-            .file("src/odepack_sub1.f")
-            .file("src/odepack.f")
-            .compile("libodepack.a");
+        if cfg!(feature = "blas") {
+            cc::Build::new()
+                .flag("-w")
+                .file("src/part_linpack.f")
+                .file("src/opkda2.f")
+                .file("src/opkda1.f")
+                .file("src/opkdmain.f")
+                .compile("libodepack.a");
+        } else {
+            cc::Build::new()
+                .flag("-w")
+                .file("src/part_blas.f")
+                .file("src/part_linpack.f")
+                .file("src/opkda2.f")
+                .file("src/opkda1.f")
+                .file("src/opkdmain.f")
+                .compile("libodepack.a");
+        }
         if cfg!(feature = "lapack") {
             cc::Build::new()
                 .flag("-w")
