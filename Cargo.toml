@@ -17,6 +17,7 @@ readme = "README.md"
 default = ["latest-gcc"]
 system-libffi = ["libffi/system"]
 latest-gcc = []
+lapack = []
 
 [dependencies]
 libc = "0.2"

@@ -18,6 +18,7 @@ fn main() {
                 .file("src/dc_lapack.f")
                 .file("src/radau.f")
                 .compile("libradau.a");
+            println!("cargo:rustc-link-lib=dylib=lapack");
         } else {
             cc::Build::new()
                 .flag("-w")
@@ -41,6 +42,7 @@ fn main() {
                 .file("src/dc_lapack.f")
                 .file("src/radau.f")
                 .compile("libradau.a");
+            println!("cargo:rustc-link-lib=dylib=lapack");
         } else {
             cc::Build::new()
                 .flag("-w")
