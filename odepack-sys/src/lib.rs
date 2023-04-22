@@ -157,6 +157,8 @@
 //!    Package to solve the linear systems that arise, by a direct method.
 //! ```
 
+#![no_std]
+
 use libc::{c_double, c_int};
 
 extern "C" {
