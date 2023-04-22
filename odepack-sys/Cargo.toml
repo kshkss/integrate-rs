@@ -8,11 +8,11 @@ build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["latest-gcc", "linpack", "sltec"]
+default = ["latest-gcc", "linpack", "slatec"]
 latest-gcc = []
 blas = []
 linpack = []
-sltec = []
+slatec = []
 
 [dependencies]
 libc = "0.2"
