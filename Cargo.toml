@@ -14,9 +14,11 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["latest-gcc"]
+default = ["latest-gcc", "lapack", "blas"]
 system-libffi = ["libffi/system"]
 latest-gcc = []
+lapack = []
+blas = []
 
 [dependencies]
 libc = "0.2"
