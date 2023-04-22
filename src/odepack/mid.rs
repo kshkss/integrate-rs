@@ -1,14 +1,12 @@
-use lazy_static::lazy_static;
 use libc::{c_double, c_int};
 use libffi::high::{Closure4, Closure6, Closure7, Closure8};
+use once_cell::sync::Lazy;
 use std::slice;
 use std::sync::Mutex;
 
 use super::low;
 
-lazy_static! {
-    static ref FLAG: Mutex<()> = Mutex::<()>::new(());
-}
+static FLAG: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub fn dlsode<'a, 'b>(
     dydt: &(impl 'a + Fn(f64, &'b [f64], &'b mut [f64]) + ?Sized),

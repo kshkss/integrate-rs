@@ -21,12 +21,12 @@ use dlsode::Lsode;
 mod dlsodes;
 use dlsodes::Lsodes;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
-lazy_static! {
-    static ref FLAG: Mutex<()> = Mutex::<()>::new(());
-}
+static FLAG: Lazy<Mutex<()>> = Lazy::new(|| {
+    Mutex::<()>::new(())
+});
 
 use ndarray::prelude::*;
 
