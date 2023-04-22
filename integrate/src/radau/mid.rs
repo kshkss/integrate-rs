@@ -1,12 +1,8 @@
 use libc::{c_double, c_int};
 use ndarray::ArrayViewMut2;
-use once_cell::sync::Lazy;
 use std::slice;
-use std::sync::Mutex;
 
 use super::low;
-
-static FLAG: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub trait Callback {
     fn fcn<'b>(&self, t: f64, y: &'b [f64], f: &'b mut [f64]);
@@ -248,7 +244,6 @@ where
     let rpar = std::ptr::null_mut();
     let mut idid = 0_i32;
 
-    let _lock = FLAG.lock().unwrap();
     unsafe {
         let ipar = std::mem::transmute::<&T, *mut c_int>(callback);
         low::radau_(
