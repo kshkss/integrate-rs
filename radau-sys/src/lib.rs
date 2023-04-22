@@ -2,9 +2,10 @@
 //! for problems of the form My'=f(x,y) with possibly singular matrix M; For the choices IWORK(11)=3 and IWORK(12)=3,
 //! the code is mathematically equivalent to RADAU5 (in general a little bit slower than RADAU5).
 
+#![no_std]
+
 use libc::{c_double, c_int};
 
-#[link(name = "gfortran")]
 extern "C" {
     pub fn radau_(
         N: *const c_int,

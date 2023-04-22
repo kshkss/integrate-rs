@@ -1,0 +1,21 @@
+[package]
+name = "odepack-sys"
+version = "0.1.0"
+edition = "2021"
+links = "odepack"
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = ["latest-gcc", "linpack", "slatec"]
+latest-gcc = []
+blas = []
+linpack = []
+slatec = []
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1.0"

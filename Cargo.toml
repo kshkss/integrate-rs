@@ -1,33 +1,6 @@
-[package]
-name = "integrate"
-version = "0.4.0"
-license = "MIT"
-edition = "2018"
-repository = "https://github.com/kshkss/integrate-rs.git"
-description = "Library to compute one-dimensional integrals and to solve systems of ODEs and DAEs numerically."
-homepage = "https://github.com/kshkss/integrate-rs.git"
-build = "build.rs"
-categories = ["science", "mathematics"]
-keywords = ["ODE", "DAE"]
-readme = "README.md"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[features]
-default = ["latest-gcc", "lapack", "blas"]
-system-libffi = ["libffi/system"]
-latest-gcc = []
-lapack = []
-blas = []
-
-[dependencies]
-libc = "0.2"
-libffi = "1"
-ndarray = "0.15"
-once_cell = "1.17.1"
-
-[build-dependencies]
-cc = "1.0"
-
-[dev-dependencies]
-approx = "0.5.0"
+[workspace]
+members = [
+	"integrate",
+	"radau-sys",
+	"odepack-sys",
+]

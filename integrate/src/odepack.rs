@@ -17,7 +17,6 @@ impl Default for Control {
     }
 }
 
-pub mod low;
 pub mod lsode;
 pub mod lsodi;
 pub mod mid;
