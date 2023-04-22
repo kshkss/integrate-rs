@@ -1,7 +1,39 @@
+//! Solvers that treat ODE and DAE systems in the linearly implicit form *A(t,y) dy/dt = f(t,y)*
+//!
+//! A is a square matrix ans allowed to be
+//! singular, in which case the system is a differential-algebraic
+//! equation (DAE) system.  In that case, the user must be very careful
+//! to supply a well-posed problem with consistent initial conditions.
+
 use super::mid;
 use super::Control;
 use ndarray::prelude::*;
 
+/// Solver for systems whose jacobian matrix and A are full matrix.
+///
+/// # Example
+///
+/// ```
+/// use integrate::odepack::*;
+/// use integrate::odepack::lsodi::*;
+/// use ndarray::prelude::*;
+///
+/// let res = |t: f64, y: &[f64], s: &[f64], r: &mut [f64]| {
+///     r[0] = -0.4 * y[0] + 1e4 * y[1] * y[2] - s[0];
+///     r[1] = 0.4 * y[0] - 1e4 * y[1] * y[2] - 3e7 * y[1] * y[1] - s[1];
+///     r[2] = y[0] + y[1] + y[2] - 1.
+/// };
+/// let adda = |t: f64, y: &[f64], mut pd: ArrayViewMut2<f64>| {
+///     pd[[0,0]] = pd[[0,0]] + 1.;
+///     pd[[1,1]] = pd[[1,1]] + 1.;
+/// };
+///
+/// let y = vec![1., 0., 0.,];
+/// let dy = vec![-0.04, 0.04, 0.];
+/// let t = vec![0., 4e-1, 4e0, 4e1, 4e2, 4e3, 4e4, 4e5, 4e6, 4e7, 4e8, 4e9, 4e10];
+///
+/// let results = Lsodi::new(&res, &adda, Control::default()).run(&t, &y, &dy);
+/// ```
 pub struct LsodiFullJacobian<'a> {
     option: Control,
     residual: &'a (dyn 'a + Fn(f64, &[f64], &[f64], &mut [f64])),
@@ -10,6 +42,26 @@ pub struct LsodiFullJacobian<'a> {
 }
 
 impl<'a> LsodiFullJacobian<'a> {
+    /// Constructor.
+    ///
+    /// # Arguments
+    ///
+    /// * `residual` - Closure represents residual function, f(t,y) - A(t,y) s
+    /// * `adda` - Closure represents A(t,y)
+    /// * `jac` - Closure represents jacobian matrix of **residual function**
+    pub fn new(
+        residual: &'a (impl 'a + Fn(f64, &[f64], &[f64], &mut [f64])),
+        adda: &'a (impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)),
+        jac: &'a (impl 'a + Fn(f64, &[f64], &[f64], ArrayViewMut2<f64>)),
+        option: Control,
+    ) -> Self {
+        Self {
+            residual,
+            adda,
+            jac: Some(jac),
+            option,
+        }
+    }
     fn is_gen_internally(&self) -> bool {
         self.jac.is_none()
     }
@@ -33,18 +85,29 @@ impl<'a> LsodiFullJacobian<'a> {
         iwork
     }
 
-    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> Vec<Vec<f64>> {
+    /// Solve the system.
+    ///
+    /// # Arguments
+    ///
+    /// * `t` - Values of independent variable. Two values are needed at least.
+    /// The first one is initial value and the last one is the value at the end.
+    /// * `y0` - Initial values of y
+    /// * `dy0` - Initial values of dy/dt
+    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
         let mut ys = Vec::with_capacity(t.len());
+        let mut dys = Vec::with_capacity(t.len());
         let mut y = y0.to_vec();
         let mut dy = dy0.to_vec();
         let mut t0 = t[0];
         for &t1 in &t[1..] {
             ys.push(y.to_owned());
+            dys.push(dy.to_owned());
             self.step((t0, t1), &mut y, &mut dy);
             t0 = t1;
         }
         ys.push(y);
-        ys
+        dys.push(dy);
+        (ys, dys)
     }
 
     fn step(&self, t: (f64, f64), y: &mut [f64], dy: &mut [f64]) {
@@ -107,6 +170,7 @@ impl<'a> LsodiFullJacobian<'a> {
     }
 }
 
+/// Solver for systems whose jacobian matrix and A are banded matrix.
 pub struct LsodiBandedJacobian<'a> {
     option: Control,
     ml: usize,
@@ -117,6 +181,33 @@ pub struct LsodiBandedJacobian<'a> {
 }
 
 impl<'a> LsodiBandedJacobian<'a> {
+    /// Constructor.
+    ///
+    /// # Arguments
+    ///
+    /// * `ml` - Width of the lower parts of jacobian matrix and A, excluding the main diagonal.
+    /// * `mu` - Width of the upper parts of jacobian matrix and A, excluding the main diagonal.
+    /// * `residual` - Closure represents residual function, f(t,y) - A(t,y) s
+    /// * `adda` - Closure represents A(t,y)
+    /// * `jac` - Closure represents jacobian matrix of **residual function**
+    pub fn new(
+        ml: usize,
+        mu: usize,
+        residual: &'a (impl 'a + Fn(f64, &[f64], &[f64], &mut [f64])),
+        adda: &'a (impl 'a + Fn(f64, &[f64], ArrayViewMut2<f64>)),
+        jac: &'a (impl 'a + Fn(f64, &[f64], &[f64], ArrayViewMut2<f64>)),
+        option: Control,
+    ) -> Self {
+        Self {
+            ml,
+            mu,
+            residual,
+            adda,
+            jac: Some(jac),
+            option,
+        }
+    }
+
     fn is_gen_internally(&self) -> bool {
         self.jac.is_none()
     }
@@ -141,18 +232,29 @@ impl<'a> LsodiBandedJacobian<'a> {
         iwork
     }
 
-    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> Vec<Vec<f64>> {
+    /// Solve the system.
+    ///
+    /// # Arguments
+    ///
+    /// * `t` - Values of independent variable. Two values are needed at least.
+    /// The first one is initial value and the last one is the value at the end.
+    /// * `y0` - Initial values of y
+    /// * `dy0` - Initial values of dy/dt
+    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
         let mut ys = Vec::with_capacity(t.len());
+        let mut dys = Vec::with_capacity(t.len());
         let mut y = y0.to_vec();
         let mut dy = dy0.to_vec();
         let mut t0 = t[0];
         for &t1 in &t[1..] {
             ys.push(y.to_owned());
+            dys.push(dy.to_owned());
             self.step((t0, t1), &mut y, &mut dy);
             t0 = t1;
         }
         ys.push(y);
-        ys
+        dys.push(dy);
+        (ys, dys)
     }
 
     fn step(&self, t: (f64, f64), y: &mut [f64], dy: &mut [f64]) {
@@ -215,6 +317,7 @@ impl<'a> LsodiBandedJacobian<'a> {
     }
 }
 
+/// Solver for systems whose jacobian matrix and A are sparse matrix.
 pub struct LsodiSparseJacobian<'a> {
     option: Control,
     max_nnz: usize,
@@ -224,6 +327,30 @@ pub struct LsodiSparseJacobian<'a> {
 }
 
 impl<'a> LsodiSparseJacobian<'a> {
+    /// Constructor.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_nnz` - Maximum number of non-zero elements in jacobian matrix and A.
+    /// * `residual` - Closure represents residual function, f(t,y) - A(t,y) s
+    /// * `adda` - Closure represents A(t,y)
+    /// * `jac` - Closure represents jacobian matrix of **residual function**
+    pub fn new(
+        max_nnz: usize,
+        residual: &'a (impl 'a + Fn(f64, &[f64], &[f64], &mut [f64])),
+        adda: &'a (impl 'a + Fn(f64, &[f64], usize, &mut [f64])),
+        jac: &'a (impl 'a + Fn(f64, &[f64], &[f64], usize, &mut [f64])),
+        option: Control,
+    ) -> Self {
+        Self {
+            max_nnz,
+            residual,
+            adda,
+            jac: Some(jac),
+            option,
+        }
+    }
+
     fn is_gen_internally(&self) -> bool {
         self.jac.is_none()
     }
@@ -254,18 +381,29 @@ impl<'a> LsodiSparseJacobian<'a> {
         iwork
     }
 
-    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> Vec<Vec<f64>> {
+    /// Solve the system.
+    ///
+    /// # Arguments
+    ///
+    /// * `t` - Values of independent variable. Two values are needed at least.
+    /// The first one is initial value and the last one is the value at the end.
+    /// * `y0` - Initial values of y
+    /// * `dy0` - Initial values of dy/dt
+    pub fn run(&self, t: &[f64], y0: &[f64], dy0: &[f64]) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
         let mut ys = Vec::with_capacity(t.len());
+        let mut dys = Vec::with_capacity(t.len());
         let mut y = y0.to_vec();
         let mut dy = dy0.to_vec();
         let mut t0 = t[0];
         for &t1 in &t[1..] {
             ys.push(y.to_owned());
+            dys.push(dy.to_owned());
             self.step((t0, t1), &mut y, &mut dy);
             t0 = t1;
         }
         ys.push(y);
-        ys
+        dys.push(dy);
+        (ys, dys)
     }
 
     fn step(&self, t: (f64, f64), y: &mut [f64], dy: &mut [f64]) {
