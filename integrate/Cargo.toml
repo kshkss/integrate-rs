@@ -27,3 +27,4 @@ radau-sys = { version = "0.1.0", path = "../radau-sys" }
 
 [dev-dependencies]
 approx = "0.5.0"
+ndarray = "0.15"
