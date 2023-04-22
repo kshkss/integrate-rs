@@ -1,4 +1,4 @@
-pub mod low;
+use radau_sys as low;
 pub mod mid;
 use ndarray::ArrayViewMut2;
 
