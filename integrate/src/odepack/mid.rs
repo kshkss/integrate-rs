@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use std::slice;
 use std::sync::Mutex;
 
-use super::low;
+use odepack_sys as low;
 
 static FLAG: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
