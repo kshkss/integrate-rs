@@ -1,46 +1,50 @@
+use approx::assert_relative_eq;
 use integrate::radau::Radau;
+use ndarray::Array1;
 
 #[test]
 fn test_case01() {
-    let f = |t: f64, _y: &[f64], dy: &mut [f64]| {
-        dy[0] = 1.;
-        dy[1] = t;
+    let f = |_t: f64, y: &[f64], dy: &mut [f64]| {
+        dy[0] = -0.1 * y[0] - 49.9 * y[1];
+        dy[1] = -50. * y[1];
+        dy[2] = 70. * y[1] - 120. * y[2];
     };
-    Radau::new(&f, Default::default()).solve(vec![0., 10.], vec![1., 1.]);
+    let ts = Array1::linspace(0., 10., 100).to_vec();
+    let res = Radau::new(&f, Default::default()).solve(ts.clone(), vec![2., 1., 2.]);
+
+    for (&t, y) in ts.iter().zip(&res) {
+        assert_relative_eq!(
+            y[0],
+            (-0.1 * t).exp() + (-50. * t).exp(),
+            max_relative = 1e-8,
+            epsilon = 1e-8
+        );
+
+        assert_relative_eq!(y[1], (-50. * t).exp(), max_relative = 1e-8, epsilon = 1e-8);
+
+        assert_relative_eq!(
+            y[2],
+            (-50. * t).exp() + (-120. * t).exp(),
+            max_relative = 1e-8,
+            epsilon = 1e-8
+        );
+    }
 }
 
 #[test]
 fn test_case02() {
-    let f = |_t: f64, y: &[f64], dy: &mut [f64]| {
-        dy[0] = y[1];
-        dy[1] = -y[0];
-    };
-    Radau::new(&f, Default::default()).solve(vec![0., 100.], vec![1., 0.]);
-}
-
-#[test]
-fn test_case03() {
     let f = |t: f64, y: &[f64], dy: &mut [f64]| {
-        dy[0] = y[0] * 0.5 / (t + 1.) - 2. * t * y[1];
-        dy[1] = y[1] * 0.5 / (t + 1.) + 2. * t * y[0];
+        dy[0] = 100. * (t.sin() - y[0]);
     };
-    Radau::new(&f, Default::default()).solve(vec![0., 10.], vec![1., 0.]);
-}
+    let ts = Array1::linspace(0., 10., 100).to_vec();
+    let res = Radau::new(&f, Default::default()).solve(ts.clone(), vec![0.]);
 
-#[test]
-fn test_case04() {
-    let f = |t: f64, y: &[f64], dy: &mut [f64]| {
-        dy[0] = -2. * y[0] + y[1] - t.cos();
-        dy[1] = 1998. * y[0] - 1999. * y[1] + 1999. * t.cos() - t.sin();
-    };
-    Radau::new(&f, Default::default()).solve(vec![0., 10.], vec![1., 2.]);
-}
-
-#[test]
-fn test_case05() {
-    let f = |_t: f64, y: &[f64], dy: &mut [f64]| {
-        dy[0] = y[1];
-        dy[1] = 1e-6_f64.powi(2) * ((1. - y[0].powi(2)) * y[1] - y[0]);
-    };
-    Radau::new(&f, Default::default()).solve(vec![0., 2.], vec![2., -0.66]);
+    for (&t, y) in ts.iter().zip(&res) {
+        assert_relative_eq!(
+            y[0],
+            (t.sin() - 0.01 * t.cos() + 0.01 * (-100. * t).exp()) / 1.0001,
+            max_relative = 1e-8,
+            epsilon = 1e-8
+        );
+    }
 }

@@ -9,6 +9,50 @@ use super::mid;
 use super::Control;
 use ndarray::prelude::*;
 
+impl<F, ADDA, JAC> mid::LsodiCallback for (&F, &ADDA, &JAC)
+where
+    F: Fn(f64, &[f64], &[f64], &mut [f64]),
+    ADDA: Fn(f64, &[f64], ArrayViewMut2<f64>),
+    JAC: Fn(f64, &[f64], &[f64], ArrayViewMut2<f64>),
+{
+    fn residual(&self, t: f64, y: &[f64], s: &[f64], res: &mut [f64]) {
+        (self.0)(t, y, s, res);
+    }
+
+    fn adda(&self, t: f64, y: &[f64], pd: &mut [f64]) {
+        let mut pd =
+            ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd).expect("size mismatch");
+        pd.swap_axes(0, 1); // make pd fortran-ordered
+        (self.1)(t, y, pd);
+    }
+
+    fn jac(&self, t: f64, y: &[f64], s: &[f64], pd: &mut [f64]) {
+        let mut pd =
+            ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd).expect("size mismatch");
+        pd.swap_axes(0, 1); // make pd fortran-ordered
+        (self.2)(t, y, s, pd);
+    }
+}
+
+impl<F, ADDA, JAC> mid::LsodisCallback for (&F, &ADDA, &JAC)
+where
+    F: Fn(f64, &[f64], &[f64], &mut [f64]),
+    ADDA: Fn(f64, &[f64], usize, &mut [f64]),
+    JAC: Fn(f64, &[f64], &[f64], usize, &mut [f64]),
+{
+    fn residual(&self, t: f64, y: &[f64], s: &[f64], res: &mut [f64]) {
+        (self.0)(t, y, s, res);
+    }
+
+    fn adda(&self, t: f64, y: &[f64], j: usize, pd: &mut [f64]) {
+        (self.1)(t, y, j, pd);
+    }
+
+    fn jac(&self, t: f64, y: &[f64], s: &[f64], j: usize, pd: &mut [f64]) {
+        (self.2)(t, y, s, j, pd);
+    }
+}
+
 /// Solver for systems whose jacobian matrix and A are full matrix.
 ///
 /// # Example
@@ -116,22 +160,8 @@ impl<'a> LsodiFullJacobian<'a> {
         let mut iwork = self.integer_work_space(y.len(), &self.option);
 
         if let Some(ref jac) = self.jac {
-            let adda = |t: f64, y: &[f64], pd: &mut [f64]| {
-                let mut pd = ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd)
-                    .expect("size mismatch");
-                pd.swap_axes(0, 1); // make pd fortran-ordered
-                (self.adda)(t, y, pd);
-            };
-            let jac = |t: f64, y: &[f64], s: &[f64], pd: &mut [f64]| {
-                let mut pd = ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd)
-                    .expect("size mismatch");
-                pd.swap_axes(0, 1); // make pd fortran-ordered
-                jac(t, y, s, pd);
-            };
             mid::dlsodi(
-                self.residual,
-                &adda,
-                &jac,
+                &(&self.residual, &self.adda, &jac),
                 y,
                 dy,
                 t.0,
@@ -143,19 +173,11 @@ impl<'a> LsodiFullJacobian<'a> {
                 mf,
             )
         } else {
-            let adda = |t: f64, y: &[f64], pd: &mut [f64]| {
-                let mut pd = ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd)
-                    .expect("size mismatch");
-                pd.swap_axes(0, 1); // make pd fortran-ordered
-                (self.adda)(t, y, pd);
-            };
-            let jac = |_t, _y, _s, _pd| {
+            let jac = |_t: f64, _y: &[f64], _s: &[f64], _pd: ArrayViewMut2<f64>| {
                 unreachable!();
             };
             mid::dlsodi(
-                self.residual,
-                &adda,
-                &jac,
+                &(&self.residual, &self.adda, &jac),
                 y,
                 dy,
                 t.0,
@@ -263,22 +285,8 @@ impl<'a> LsodiBandedJacobian<'a> {
         let mut iwork = self.integer_work_space(y.len(), &self.option);
 
         if let Some(ref jac) = self.jac {
-            let adda = |t: f64, y: &[f64], pd: &mut [f64]| {
-                let mut pd = ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd)
-                    .expect("size mismatch");
-                pd.swap_axes(0, 1); // make pd fortran-ordered
-                (self.adda)(t, y, pd);
-            };
-            let jac = |t: f64, y: &[f64], s: &[f64], pd: &mut [f64]| {
-                let mut pd = ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd)
-                    .expect("size mismatch");
-                pd.swap_axes(0, 1); // make pd fortran-ordered
-                jac(t, y, s, pd);
-            };
             mid::dlsodi(
-                self.residual,
-                &adda,
-                &jac,
+                &(&self.residual, &self.adda, &jac),
                 y,
                 dy,
                 t.0,
@@ -290,19 +298,11 @@ impl<'a> LsodiBandedJacobian<'a> {
                 mf,
             )
         } else {
-            let adda = |t: f64, y: &[f64], pd: &mut [f64]| {
-                let mut pd = ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd)
-                    .expect("size mismatch");
-                pd.swap_axes(0, 1); // make pd fortran-ordered
-                (self.adda)(t, y, pd);
-            };
-            let jac = |_t, _y, _s, _pd| {
+            let jac = |_t: f64, _y: &[f64], _s: &[f64], _pd: ArrayViewMut2<f64>| {
                 unreachable!();
             };
             mid::dlsodi(
-                self.residual,
-                &adda,
-                &jac,
+                &(&self.residual, &self.adda, &jac),
                 y,
                 dy,
                 t.0,
@@ -413,9 +413,7 @@ impl<'a> LsodiSparseJacobian<'a> {
 
         if let Some(ref jac) = self.jac {
             mid::dlsodis(
-                self.residual,
-                self.adda,
-                jac,
+                &(&self.residual, &self.adda, jac),
                 y,
                 dy,
                 t.0,
@@ -427,13 +425,11 @@ impl<'a> LsodiSparseJacobian<'a> {
                 mf,
             );
         } else {
-            let jac = |_t, _y, _s, _j, _pd| {
+            let jac = |_t: f64, _y: &[f64], _s: &[f64], _j: usize, _pd: &mut [f64]| {
                 unreachable!();
             };
             mid::dlsodis(
-                self.residual,
-                self.adda,
-                &jac,
+                &(&self.residual, &self.adda, &jac),
                 y,
                 dy,
                 t.0,

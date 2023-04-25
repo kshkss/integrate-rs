@@ -1,13 +1,8 @@
 use libc::{c_double, c_int};
-use libffi::high::{Closure10, Closure5, Closure6, Closure7};
 use ndarray::ArrayViewMut2;
-use once_cell::sync::Lazy;
 use std::slice;
-use std::sync::Mutex;
 
 use super::low;
-
-static FLAG: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub trait Callback {
     fn fcn<'b>(&self, t: f64, y: &'b [f64], f: &'b mut [f64]);
@@ -128,6 +123,98 @@ pub fn integer_work_space(
     iwork
 }
 
+extern "C" fn fcn<T: Callback>(
+    n: *const c_int,
+    x_ptr: *const c_double,
+    y_ptr: *const c_double,
+    f_ptr: *mut c_double,
+    _: *mut c_double,
+    callback_ptr: *mut c_int,
+) {
+    let (f, y, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(f_ptr, *n as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            *x_ptr,
+        )
+    };
+    let callback = unsafe { &*(callback_ptr as *const T) };
+    callback.fcn(t, y, f);
+}
+
+extern "C" fn jac<T: Callback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *const c_double,
+    pd_ptr: *mut c_double,
+    nrow_pd: *const c_int,
+    _: *mut c_double,
+    callback_ptr: *mut c_double,
+) {
+    let (nrow, pd, y, t) = unsafe {
+        let y = slice::from_raw_parts(y_ptr, *n as usize);
+        let t = *t_ptr;
+        let nrow = *nrow_pd as usize;
+        let pd = slice::from_raw_parts_mut(pd_ptr, y.len() * nrow);
+        (nrow, pd, y, t)
+    };
+    let callback = unsafe { &*(callback_ptr as *const T) };
+    let mut pd = ArrayViewMut2::from_shape((y.len(), nrow), pd).unwrap();
+    pd.swap_axes(0, 1); // make pd fortran-ordered
+    callback.jac(t, y, pd);
+}
+
+extern "C" fn mas<T: Callback>(
+    n: *const c_int,
+    m_ptr: *mut c_double,
+    nrow_m: *const c_int,
+    _: *mut c_double,
+    callback_ptr: *mut c_int,
+) {
+    let (m, n, nrow) = unsafe {
+        let nrow = *nrow_m as usize;
+        let n = *n as usize;
+        let m = slice::from_raw_parts_mut(m_ptr, n * nrow);
+        (m, n, nrow)
+    };
+    let callback = unsafe { &*(callback_ptr as *const T) };
+    let mut m = ArrayViewMut2::from_shape((n, nrow), m).unwrap();
+    m.swap_axes(0, 1); // make pd fortran-ordered
+    callback.mas(m);
+}
+
+extern "C" fn solout<T: Callback>(
+    nr: *const c_int,
+    xold: *const c_double,
+    x: *const c_double,
+    y_ptr: *const c_double,
+    cont_ptr: *const c_double,
+    lrc: *const c_int,
+    n_ptr: *const c_int,
+    _: *mut c_double,
+    callback_ptr: *mut c_int,
+    irtrn: *mut c_int,
+) {
+    let (nr, xold, x, y) = unsafe {
+        let y = slice::from_raw_parts(y_ptr, *n_ptr as usize);
+        (*nr as usize, *xold, *x, y)
+    };
+    let callback = unsafe { &*(callback_ptr as *const T) };
+    let contra = |s: f64| {
+        let mut interp = Vec::with_capacity(y.len());
+        for i in 0_i32..y.len() as i32 {
+            let val = unsafe { low::contra_(&i, &s, cont_ptr, lrc) };
+            interp.push(val);
+        }
+        interp
+    };
+
+    let ret = callback.solout(nr, xold, x, y, &contra);
+    unsafe {
+        *irtrn = ret;
+    }
+}
+
 pub fn radau<'a, 'b, T: Callback>(
     callback: &'a T,
     y: &mut [f64],
@@ -149,110 +236,19 @@ where
     let (imas, mumas, mlmas) = mas_type.settings(n);
     let iout = if use_solout { 1_i32 } else { 0_i32 };
 
-    let fcn = |n: *const c_int,
-               x_ptr: *const c_double,
-               y_ptr: *const c_double,
-               f_ptr: *mut c_double,
-               _: *mut c_double,
-               _: *mut c_int| {
-        let (f, y, t) = unsafe {
-            (
-                slice::from_raw_parts_mut(f_ptr, *n as usize),
-                slice::from_raw_parts(y_ptr, *n as usize),
-                *x_ptr,
-            )
-        };
-        callback.fcn(t, y, f);
-    };
-    let closure = Closure6::new(&fcn);
-    let fcn = closure.code_ptr();
-
-    let jac = |n: *const c_int,
-               t_ptr: *const c_double,
-               y_ptr: *const c_double,
-               pd_ptr: *mut c_double,
-               nrow_pd: *const c_int,
-               _: *mut c_double,
-               _: *mut c_double| {
-        let (nrow, pd, y, t) = unsafe {
-            debug_assert!(*nrow_pd == *n || *nrow_pd == 1 + mujac + mljac);
-            let y = slice::from_raw_parts(y_ptr, *n as usize);
-            let t = *t_ptr;
-            let nrow = *nrow_pd as usize;
-            let pd = slice::from_raw_parts_mut(pd_ptr, y.len() * nrow);
-            (nrow, pd, y, t)
-        };
-        let mut pd = ArrayViewMut2::from_shape((y.len(), nrow), pd).unwrap();
-        pd.swap_axes(0, 1); // make pd fortran-ordered
-        callback.jac(t, y, pd);
-    };
-    let closure2 = Closure7::new(&jac);
-    let jac = closure2.code_ptr();
-
-    let mas = |n: *const c_int,
-               m_ptr: *mut c_double,
-               nrow_m: *const c_int,
-               _: *mut c_double,
-               _: *mut c_int| {
-        let (m, n, nrow) = unsafe {
-            debug_assert!(*nrow_m == *n || *nrow_m == 1 + mumas + mlmas);
-            let nrow = *nrow_m as usize;
-            let n = *n as usize;
-            let m = slice::from_raw_parts_mut(m_ptr, n * nrow);
-            (m, n, nrow)
-        };
-        let mut m = ArrayViewMut2::from_shape((n, nrow), m).unwrap();
-        m.swap_axes(0, 1); // make pd fortran-ordered
-        callback.mas(m);
-    };
-    let closure3 = Closure5::new(&mas);
-    let mas = closure3.code_ptr();
-
-    let solout = |nr: *const c_int,
-                  xold: *const c_double,
-                  x: *const c_double,
-                  y_ptr: *const c_double,
-                  cont_ptr: *const c_double,
-                  lrc: *const c_int,
-                  n_ptr: *const c_int,
-                  _: *mut c_double,
-                  _: *mut c_int,
-                  irtrn: *mut c_int| {
-        let (nr, xold, x, y) = unsafe {
-            let y = slice::from_raw_parts(y_ptr, *n_ptr as usize);
-            (*nr as usize, *xold, *x, y)
-        };
-        let contra = |s: f64| {
-            let mut interp = Vec::with_capacity(y.len());
-            for i in 0_i32..n {
-                let val = unsafe { low::contra_(&i, &s, cont_ptr, lrc) };
-                interp.push(val);
-            }
-            interp
-        };
-
-        let ret = callback.solout(nr, xold, x, y, &contra);
-        unsafe {
-            *irtrn = ret;
-        }
-    };
-    let closure4 = Closure10::new(&solout);
-    let solout = closure4.code_ptr();
-
     let itol = 1;
 
     let lrw = rwork.len() as i32;
     let liw = iwork.len() as i32;
 
-    let mut rpar = vec![0.; 0];
-    let mut ipar = vec![0; 0];
+    let rpar = std::ptr::null_mut();
     let mut idid = 0_i32;
 
-    let _lock = FLAG.lock().unwrap();
     unsafe {
+        let ipar = std::mem::transmute::<&T, *mut c_int>(callback);
         low::radau_(
             &n,
-            *fcn,
+            fcn::<T>,
             &mut t0,
             y.as_mut_ptr(),
             &t1,
@@ -260,22 +256,22 @@ where
             rtol.as_ptr(),
             atol.as_ptr(),
             &itol,
-            *jac,
+            jac::<T>,
             &ijac,
             &mljac,
             &mujac,
-            *mas,
+            mas::<T>,
             &imas,
             &mlmas,
             &mumas,
-            *solout,
+            solout::<T>,
             &iout,
             rwork.as_mut_ptr(),
             &lrw,
             iwork.as_mut_ptr(),
             &liw,
-            rpar.as_mut_ptr(),
-            ipar.as_mut_ptr(),
+            rpar,
+            ipar,
             &mut idid,
         );
     }

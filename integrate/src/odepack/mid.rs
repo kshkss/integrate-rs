@@ -1,5 +1,4 @@
 use libc::{c_double, c_int};
-use libffi::high::{Closure4, Closure6, Closure7, Closure8};
 use once_cell::sync::Lazy;
 use std::slice;
 use std::sync::Mutex;
@@ -8,9 +7,56 @@ use odepack_sys as low;
 
 static FLAG: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
-pub fn dlsode<'a, 'b>(
-    dydt: &(impl 'a + Fn(f64, &'b [f64], &'b mut [f64]) + ?Sized),
-    jac: &(impl 'a + Fn(f64, &'b [f64], &'b mut [f64]) + ?Sized),
+pub trait LsodeCallback {
+    fn f(&self, t: f64, y: &[f64], dy: &mut [f64]);
+    fn jac(&self, t: f64, y: &[f64], pd: &mut [f64]);
+}
+
+extern "C" fn lsode_f<T: LsodeCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *mut c_double,
+    dy_ptr: *mut c_double,
+) {
+    let (dy, y, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(dy_ptr, *n as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            *t_ptr,
+        )
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.f(t, y, dy);
+}
+
+extern "C" fn lsode_jac<T: LsodeCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *const c_double,
+    _ml_ptr: *const c_int,
+    _mu_ptr: *const c_int,
+    pd_ptr: *mut c_double,
+    nrow_pd: *const c_int,
+) {
+    let (pd, y, t) = unsafe {
+        let y = slice::from_raw_parts(y_ptr, *n as usize);
+        let t = *t_ptr;
+        let nrow = *nrow_pd as usize;
+        let pd = slice::from_raw_parts_mut(pd_ptr, y.len() * nrow);
+        (pd, y, t)
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.jac(t, y, pd);
+}
+
+pub fn dlsode<'a, 'b, T: LsodeCallback>(
+    callback: &T,
     y: &mut [f64],
     mut t0: f64,
     t1: f64,
@@ -20,40 +66,13 @@ pub fn dlsode<'a, 'b>(
     iwork: &mut [i32],
     mf: i32,
 ) {
-    let f =
-        |n: *const c_int, t_ptr: *const c_double, y_ptr: *mut c_double, dy_ptr: *mut c_double| {
-            let (dy, y, t) = unsafe {
-                (
-                    slice::from_raw_parts_mut(dy_ptr, *n as usize),
-                    slice::from_raw_parts(y_ptr, *n as usize),
-                    *t_ptr,
-                )
-            };
-            dydt(t, y, dy);
-        };
-    let closure = Closure4::new(&f);
-    let call = closure.code_ptr();
-
-    let dfdy = |n: *const c_int,
-                t_ptr: *const c_double,
-                y_ptr: *const c_double,
-                _ml_ptr: *const c_int,
-                _mu_ptr: *const c_int,
-                pd_ptr: *mut c_double,
-                nrow_pd: *const c_int| {
-        let (pd, y, t) = unsafe {
-            let y = slice::from_raw_parts(y_ptr, *n as usize);
-            let t = *t_ptr;
-            let nrow = *nrow_pd as usize;
-            let pd = slice::from_raw_parts_mut(pd_ptr, y.len() * nrow);
-            (pd, y, t)
-        };
-        jac(t, y, pd);
+    let n = {
+        let mut n = [y.len() as i32; 3];
+        let ptr = unsafe { std::mem::transmute::<&T, [i32; 2]>(callback) };
+        n[1] = ptr[0];
+        n[2] = ptr[1];
+        n
     };
-    let closure2 = Closure7::new(&dfdy);
-    let call2 = closure2.code_ptr();
-
-    let n = y.len() as i32;
 
     let itol = 1;
     let itask = 1;
@@ -66,8 +85,8 @@ pub fn dlsode<'a, 'b>(
     let _lock = FLAG.lock().unwrap();
     unsafe {
         low::dlsode_(
-            *call,
-            &n,
+            lsode_f::<T>,
+            n.as_ptr(),
             y.as_mut_ptr(),
             &mut t0,
             &t1,
@@ -81,15 +100,63 @@ pub fn dlsode<'a, 'b>(
             &lrw,
             iwork.as_mut_ptr(),
             &liw,
-            *call2,
+            lsode_jac::<T>,
             &mf,
         );
     }
 }
 
-pub fn dlsodes<'a, 'b>(
-    dydt: &(impl 'a + Fn(f64, &'b [f64], &'b mut [f64]) + ?Sized),
-    jac: &(impl 'a + Fn(f64, &'b [f64], usize, &'b mut [f64]) + ?Sized),
+pub trait LsodesCallback {
+    fn f(&self, t: f64, y: &[f64], dy: &mut [f64]);
+    fn jac(&self, t: f64, y: &[f64], j: usize, pd: &mut [f64]);
+}
+
+extern "C" fn lsodes_f<T: LsodesCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *mut c_double,
+    dy_ptr: *mut c_double,
+) {
+    let (dy, y, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(dy_ptr, *n as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            *t_ptr,
+        )
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.f(t, y, dy);
+}
+
+extern "C" fn lsodes_jac<T: LsodesCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *const c_double,
+    j_ptr: *const c_int,
+    _ian: *const c_int,
+    _jan: *const c_int,
+    pd_ptr: *mut c_double,
+) {
+    let j = unsafe { *j_ptr as usize };
+    let (pd, y, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(pd_ptr, *n as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            *t_ptr,
+        )
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.jac(t, y, j - 1, pd);
+}
+
+pub fn dlsodes<'a, 'b, T: LsodesCallback>(
+    callback: &T,
     y0: &mut [f64],
     mut t0: f64,
     t1: f64,
@@ -99,42 +166,13 @@ pub fn dlsodes<'a, 'b>(
     iwork: &mut [i32],
     mf: i32,
 ) {
-    let f =
-        |n: *const c_int, t_ptr: *const c_double, y_ptr: *mut c_double, dy_ptr: *mut c_double| {
-            let (dy, y, t) = unsafe {
-                (
-                    slice::from_raw_parts_mut(dy_ptr, *n as usize),
-                    slice::from_raw_parts(y_ptr, *n as usize),
-                    *t_ptr,
-                )
-            };
-            dydt(t, y, dy);
-        };
-    let closure = Closure4::new(&f);
-    let call = closure.code_ptr();
-
-    let jac = |neq: *const c_int,
-               t_ptr: *const c_double,
-               y_ptr: *const c_double,
-               j_ptr: *const c_int,
-               _ian: *const c_int,
-               _jan: *const c_int,
-               pd_ptr: *mut c_double| {
-        let n = unsafe { *neq as usize };
-        let j = unsafe { *j_ptr as usize };
-        let (pd, y, t) = unsafe {
-            (
-                slice::from_raw_parts_mut(pd_ptr, n),
-                slice::from_raw_parts(y_ptr, n),
-                *t_ptr,
-            )
-        };
-        jac(t, y, j - 1, pd);
+    let n = {
+        let mut n = [y0.len() as i32; 3];
+        let ptr = unsafe { std::mem::transmute::<&T, [i32; 2]>(callback) };
+        n[1] = ptr[0];
+        n[2] = ptr[1];
+        n
     };
-    let closure2 = Closure7::new(&jac);
-    let call2 = closure2.code_ptr();
-
-    let n = y0.len() as i32;
 
     let itol = 1;
     let itask = 1;
@@ -147,8 +185,8 @@ pub fn dlsodes<'a, 'b>(
     let _lock = FLAG.lock().unwrap();
     unsafe {
         low::dlsodes_(
-            *call,
-            &n,
+            lsodes_f::<T>,
+            n.as_ptr(),
             y0.as_mut_ptr(),
             &mut t0,
             &t1,
@@ -162,16 +200,91 @@ pub fn dlsodes<'a, 'b>(
             &lrw,
             iwork.as_mut_ptr(),
             &liw,
-            *call2,
+            lsodes_jac::<T>,
             &mf,
         );
     }
 }
 
-pub fn dlsodi<'a, 'b>(
-    res: &(impl 'a + Fn(f64, &'b [f64], &'b [f64], &'b mut [f64]) + ?Sized), // t, y, s, r
-    adda: &(impl 'a + Fn(f64, &'b [f64], &'b mut [f64]) + ?Sized),           // t, y, p
-    jac: &(impl 'a + Fn(f64, &'b [f64], &'b [f64], &'b mut [f64]) + ?Sized), // t, y, s, p
+pub trait LsodiCallback {
+    fn residual(&self, t: f64, y: &[f64], s: &[f64], res: &mut [f64]);
+    fn jac(&self, t: f64, y: &[f64], s: &[f64], pd: &mut [f64]);
+    fn adda(&self, t: f64, y: &[f64], pd: &mut [f64]);
+}
+
+extern "C" fn lsodi_res<T: LsodiCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *const c_double,
+    s_ptr: *const c_double,
+    r_ptr: *mut c_double,
+    _ires: *const c_int,
+) {
+    let (r, y, s, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(r_ptr, *n as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            slice::from_raw_parts(s_ptr, *n as usize),
+            *t_ptr,
+        )
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.residual(t, y, s, r);
+}
+
+extern "C" fn lsodi_adda<T: LsodiCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *const c_double,
+    _ml: *const c_int,
+    _mu: *const c_int,
+    p_ptr: *mut c_double,
+    nrow_p: *const c_int,
+) {
+    let (p, y, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(p_ptr, *n as usize * *nrow_p as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            *t_ptr,
+        )
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.adda(t, y, p);
+}
+
+extern "C" fn lsodi_jac<T: LsodiCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *const c_double,
+    s_ptr: *const c_double,
+    _ml: *const c_int,
+    _mu: *const c_int,
+    p_ptr: *mut c_double,
+    nrow_p: *const c_int,
+) {
+    let (p, y, s, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(p_ptr, *n as usize * *nrow_p as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            slice::from_raw_parts(s_ptr, *n as usize),
+            *t_ptr,
+        )
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.jac(t, y, s, p);
+}
+
+pub fn dlsodi<'a, 'b, T: LsodiCallback>(
+    callback: &T,
     y0: &mut [f64],
     dydt0: &mut [f64],
     mut t0: f64,
@@ -182,69 +295,13 @@ pub fn dlsodi<'a, 'b>(
     iwork: &mut [i32],
     mf: i32,
 ) {
-    let f = |n: *const c_int,
-             t_ptr: *const c_double,
-             y_ptr: *const c_double,
-             s_ptr: *const c_double,
-             r_ptr: *mut c_double,
-             _ires: *const c_int| {
-        let (r, y, s, t) = unsafe {
-            (
-                slice::from_raw_parts_mut(r_ptr, *n as usize),
-                slice::from_raw_parts(y_ptr, *n as usize),
-                slice::from_raw_parts(s_ptr, *n as usize),
-                *t_ptr,
-            )
-        };
-        res(t, y, s, r);
+    let n = {
+        let mut n = [y0.len() as i32; 3];
+        let ptr = unsafe { std::mem::transmute::<&T, [i32; 2]>(callback) };
+        n[1] = ptr[0];
+        n[2] = ptr[1];
+        n
     };
-    let closure = Closure6::new(&f);
-    let call = closure.code_ptr();
-
-    let adda = |n: *const c_int,
-                t_ptr: *const c_double,
-                y_ptr: *const c_double,
-                _ml: *const c_int,
-                _mu: *const c_int,
-                p_ptr: *mut c_double,
-                nrow_p: *const c_int| {
-        let (p, y, t) = unsafe {
-            debug_assert!(*nrow_p == *n || *nrow_p == *_ml + *_mu + 1);
-            (
-                slice::from_raw_parts_mut(p_ptr, *n as usize * *nrow_p as usize),
-                slice::from_raw_parts(y_ptr, *n as usize),
-                *t_ptr,
-            )
-        };
-        adda(t, y, p);
-    };
-    let closure2 = Closure7::new(&adda);
-    let call2 = closure2.code_ptr();
-
-    let jac = |neq: *const c_int,
-               t_ptr: *const c_double,
-               y_ptr: *const c_double,
-               s_ptr: *const c_double,
-               _ml: *const c_int,
-               _mu: *const c_int,
-               p_ptr: *mut c_double,
-               nrow_p: *const c_int| {
-        let n = unsafe { *neq as usize };
-        let (p, y, s, t) = unsafe {
-            debug_assert!(*nrow_p == *neq || *nrow_p == *_ml + *_mu + 1);
-            (
-                slice::from_raw_parts_mut(p_ptr, n * *nrow_p as usize),
-                slice::from_raw_parts(y_ptr, n),
-                slice::from_raw_parts(s_ptr, n),
-                *t_ptr,
-            )
-        };
-        jac(t, y, s, p);
-    };
-    let closure3 = Closure8::new(&jac);
-    let call3 = closure3.code_ptr();
-
-    let n = y0.len() as i32;
 
     let itol = 1;
     let itask = 1;
@@ -257,10 +314,10 @@ pub fn dlsodi<'a, 'b>(
     let _lock = FLAG.lock().unwrap();
     unsafe {
         low::dlsodi_(
-            *call,
-            *call2,
-            *call3,
-            &n,
+            lsodi_res::<T>,
+            lsodi_adda::<T>,
+            lsodi_jac::<T>,
+            n.as_ptr(),
             y0.as_mut_ptr(),
             dydt0.as_mut_ptr(),
             &mut t0,
@@ -280,10 +337,87 @@ pub fn dlsodi<'a, 'b>(
     }
 }
 
-pub fn dlsodis<'a, 'b>(
-    res: &(impl 'a + Fn(f64, &'b [f64], &'b [f64], &'b mut [f64]) + ?Sized), // t, y, s, r
-    adda: &(impl 'a + Fn(f64, &'b [f64], usize, &'b mut [f64]) + ?Sized),    // t, y, p
-    jac: &(impl 'a + Fn(f64, &'b [f64], &'b [f64], usize, &'b mut [f64]) + ?Sized), // t, y, s, p
+pub trait LsodisCallback {
+    fn residual(&self, t: f64, y: &[f64], s: &[f64], res: &mut [f64]);
+    fn jac(&self, t: f64, y: &[f64], s: &[f64], j: usize, pd: &mut [f64]);
+    fn adda(&self, t: f64, y: &[f64], j: usize, pd: &mut [f64]);
+}
+
+extern "C" fn lsodis_res<T: LsodisCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *const c_double,
+    s_ptr: *const c_double,
+    r_ptr: *mut c_double,
+    _ires: *const c_int,
+) {
+    let (r, y, s, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(r_ptr, *n as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            slice::from_raw_parts(s_ptr, *n as usize),
+            *t_ptr,
+        )
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.residual(t, y, s, r);
+}
+
+extern "C" fn lsodis_adda<T: LsodisCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *const c_double,
+    j_ptr: *const c_int,
+    _ian: *const c_int,
+    _jan: *const c_int,
+    pd_ptr: *mut c_double,
+) {
+    let j = unsafe { *j_ptr as usize };
+    let (pd, y, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(pd_ptr, *n as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            *t_ptr,
+        )
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.adda(t, y, j - 1, pd);
+}
+
+extern "C" fn lsodis_jac<T: LsodisCallback>(
+    n: *const c_int,
+    t_ptr: *const c_double,
+    y_ptr: *const c_double,
+    s_ptr: *const c_double,
+    j_ptr: *const c_int,
+    _ian: *const c_int,
+    _jan: *const c_int,
+    pd_ptr: *mut c_double,
+) {
+    let j = unsafe { *j_ptr as usize };
+    let (pd, y, s, t) = unsafe {
+        (
+            slice::from_raw_parts_mut(pd_ptr, *n as usize),
+            slice::from_raw_parts(y_ptr, *n as usize),
+            slice::from_raw_parts(s_ptr, *n as usize),
+            *t_ptr,
+        )
+    };
+    let callback = unsafe {
+        let ptr = [*n.offset(1), *n.offset(2)];
+        std::mem::transmute::<[i32; 2], &T>(ptr)
+    };
+    callback.jac(t, y, s, j - 1, pd);
+}
+
+pub fn dlsodis<'a, 'b, T: LsodisCallback>(
+    callback: &T,
     y0: &mut [f64],
     dydt0: &mut [f64],
     mut t0: f64,
@@ -294,70 +428,13 @@ pub fn dlsodis<'a, 'b>(
     iwork: &mut [i32],
     mf: i32,
 ) {
-    let f = |n: *const c_int,
-             t_ptr: *const c_double,
-             y_ptr: *const c_double,
-             s_ptr: *const c_double,
-             r_ptr: *mut c_double,
-             _ires: *const c_int| {
-        let (r, y, s, t) = unsafe {
-            (
-                slice::from_raw_parts_mut(r_ptr, *n as usize),
-                slice::from_raw_parts(y_ptr, *n as usize),
-                slice::from_raw_parts(s_ptr, *n as usize),
-                *t_ptr,
-            )
-        };
-        res(t, y, s, r);
+    let n = {
+        let mut n = [y0.len() as i32; 3];
+        let ptr = unsafe { std::mem::transmute::<&T, [i32; 2]>(callback) };
+        n[1] = ptr[0];
+        n[2] = ptr[1];
+        n
     };
-    let closure = Closure6::new(&f);
-    let call = closure.code_ptr();
-
-    let adda = |neq: *const c_int,
-                t_ptr: *const c_double,
-                y_ptr: *const c_double,
-                j_ptr: *const c_int,
-                _ian: *const c_int,
-                _jan: *const c_int,
-                pd_ptr: *mut c_double| {
-        let n = unsafe { *neq as usize };
-        let j = unsafe { *j_ptr as usize };
-        let (pd, y, t) = unsafe {
-            (
-                slice::from_raw_parts_mut(pd_ptr, n),
-                slice::from_raw_parts(y_ptr, n),
-                *t_ptr,
-            )
-        };
-        adda(t, y, j - 1, pd);
-    };
-    let closure2 = Closure7::new(&adda);
-    let call2 = closure2.code_ptr();
-
-    let jac = |neq: *const c_int,
-               t_ptr: *const c_double,
-               y_ptr: *const c_double,
-               s_ptr: *const c_double,
-               j_ptr: *const c_int,
-               _ian: *const c_int,
-               _jan: *const c_int,
-               pd_ptr: *mut c_double| {
-        let n = unsafe { *neq as usize };
-        let j = unsafe { *j_ptr as usize };
-        let (pd, y, s, t) = unsafe {
-            (
-                slice::from_raw_parts_mut(pd_ptr, n),
-                slice::from_raw_parts(y_ptr, n),
-                slice::from_raw_parts(s_ptr, n),
-                *t_ptr,
-            )
-        };
-        jac(t, y, s, j - 1, pd);
-    };
-    let closure3 = Closure8::new(&jac);
-    let call3 = closure3.code_ptr();
-
-    let n = y0.len() as i32;
 
     let itol = 1;
     let itask = 1;
@@ -370,10 +447,10 @@ pub fn dlsodis<'a, 'b>(
     let _lock = FLAG.lock().unwrap();
     unsafe {
         low::dlsodis_(
-            *call,
-            *call2,
-            *call3,
-            &n,
+            lsodis_res::<T>,
+            lsodis_adda::<T>,
+            lsodis_jac::<T>,
+            n.as_ptr(),
             y0.as_mut_ptr(),
             dydt0.as_mut_ptr(),
             &mut t0,

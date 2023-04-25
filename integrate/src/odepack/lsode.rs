@@ -8,6 +8,37 @@ use super::mid;
 use super::Control;
 use ndarray::prelude::*;
 
+impl<F, JAC> mid::LsodeCallback for (&F, &JAC)
+where
+    F: Fn(f64, &[f64], &mut [f64]),
+    JAC: Fn(f64, &[f64], ArrayViewMut2<f64>),
+{
+    fn f(&self, t: f64, y: &[f64], dy: &mut [f64]) {
+        (self.0)(t, y, dy);
+    }
+
+    fn jac(&self, t: f64, y: &[f64], pd: &mut [f64]) {
+        let mut pd =
+            ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd).expect("size mismatch");
+        pd.swap_axes(0, 1); // make pd fortran-ordered
+        (self.1)(t, y, pd);
+    }
+}
+
+impl<F, JAC> mid::LsodesCallback for (&F, &JAC)
+where
+    F: Fn(f64, &[f64], &mut [f64]),
+    JAC: Fn(f64, &[f64], usize, &mut [f64]),
+{
+    fn f(&self, t: f64, y: &[f64], dy: &mut [f64]) {
+        (self.0)(t, y, dy);
+    }
+
+    fn jac(&self, t: f64, y: &[f64], j: usize, pd: &mut [f64]) {
+        (self.1)(t, y, j, pd);
+    }
+}
+
 enum Jac<'a> {
     NoJac,
     UserSuppliedFull {
@@ -492,12 +523,11 @@ impl<'a> Lsode<'a> {
 
         match self.jac {
             Jac::NoJac | Jac::InternalFull | Jac::InternalBanded { .. } => {
-                let jac = |_t, _y, _pd| {
+                let jac = |_t: f64, _y: &[f64], _pd: ArrayViewMut2<f64>| {
                     unreachable!();
                 };
                 mid::dlsode(
-                    self.f,
-                    &jac,
+                    &(&self.f, &jac),
                     y,
                     t.0,
                     t.1,
@@ -510,12 +540,11 @@ impl<'a> Lsode<'a> {
             }
 
             Jac::InternalSparse { .. } => {
-                let jac = |_t, _y, _j, _pd| {
+                let jac = |_t: f64, _y: &[f64], _j: usize, _pd: &mut [f64]| {
                     unreachable!();
                 };
                 mid::dlsodes(
-                    self.f,
-                    &jac,
+                    &(&self.f, &jac),
                     y,
                     t.0,
                     t.1,
@@ -528,16 +557,8 @@ impl<'a> Lsode<'a> {
             }
 
             Jac::UserSuppliedFull { ref jac } | Jac::UserSuppliedBanded { ref jac, .. } => {
-                let jac = |t: f64, y: &[f64], pd: &mut [f64]| {
-                    assert_eq!(0, pd.len() % y.len());
-                    let mut pd = ArrayViewMut2::from_shape((y.len(), pd.len() / y.len()), pd)
-                        .expect("size mismatch");
-                    pd.swap_axes(0, 1); // make pd fortran-ordered
-                    jac(t, y, pd);
-                };
                 mid::dlsode(
-                    self.f,
-                    &jac,
+                    &(&self.f, &jac),
                     y,
                     t.0,
                     t.1,
@@ -550,8 +571,7 @@ impl<'a> Lsode<'a> {
             }
 
             Jac::UserSuppliedSparse { ref jac, .. } => mid::dlsodes(
-                self.f,
-                &jac,
+                &(&self.f, &jac),
                 y,
                 t.0,
                 t.1,
