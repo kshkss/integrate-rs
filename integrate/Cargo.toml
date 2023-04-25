@@ -19,7 +19,6 @@ blas = ["odepack-sys/blas"]
 
 [dependencies]
 libc = "0.2"
-libffi = "1"
 ndarray = "0.15"
 odepack-sys = { version = "0.1.0", path = "../odepack-sys" }
 once_cell = "1.17.1"

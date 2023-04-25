@@ -34,6 +34,25 @@ where
     }
 }
 
+impl<F, ADDA, JAC> mid::LsodisCallback for (&F, &ADDA, &JAC)
+where
+    F: Fn(f64, &[f64], &[f64], &mut [f64]),
+    ADDA: Fn(f64, &[f64], usize, &mut [f64]),
+    JAC: Fn(f64, &[f64], &[f64], usize, &mut [f64]),
+{
+    fn residual(&self, t: f64, y: &[f64], s: &[f64], res: &mut [f64]) {
+        (self.0)(t, y, s, res);
+    }
+
+    fn adda(&self, t: f64, y: &[f64], j: usize, pd: &mut [f64]) {
+        (self.1)(t, y, j, pd);
+    }
+
+    fn jac(&self, t: f64, y: &[f64], s: &[f64], j: usize, pd: &mut [f64]) {
+        (self.2)(t, y, s, j, pd);
+    }
+}
+
 /// Solver for systems whose jacobian matrix and A are full matrix.
 ///
 /// # Example
@@ -394,9 +413,7 @@ impl<'a> LsodiSparseJacobian<'a> {
 
         if let Some(ref jac) = self.jac {
             mid::dlsodis(
-                self.residual,
-                self.adda,
-                jac,
+                &(&self.residual, &self.adda, jac),
                 y,
                 dy,
                 t.0,
@@ -408,13 +425,11 @@ impl<'a> LsodiSparseJacobian<'a> {
                 mf,
             );
         } else {
-            let jac = |_t, _y, _s, _j, _pd| {
+            let jac = |_t: f64, _y: &[f64], _s: &[f64], _j: usize, _pd: &mut [f64]| {
                 unreachable!();
             };
             mid::dlsodis(
-                self.residual,
-                self.adda,
-                &jac,
+                &(&self.residual, &self.adda, &jac),
                 y,
                 dy,
                 t.0,
