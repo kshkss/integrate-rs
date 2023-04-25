@@ -133,7 +133,7 @@ impl<'a> Jac<'a> {
 
 /// Driver for four types of solvers including Adams methods and BDF methods.
 ///
-/// Each three BDF solver treats jacobian matrix df/dy as a full matrix, a banded matrix, or 
+/// Each three BDF solver treats jacobian matrix df/dy as a full matrix, a banded matrix, or
 /// a sparse matrix.
 pub struct Lsode<'a> {
     f: &'a (dyn 'a + Fn(f64, &[f64], &mut [f64])),
