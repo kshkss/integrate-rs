@@ -121,10 +121,9 @@ impl<'a> Jac<'a> {
                 iwork[5] = option.max_steps as i32;
                 iwork
             }
-            InternalSparse { max_nnz } | UserSuppliedSparse { max_nnz, .. } => {
+            InternalSparse { .. } | UserSuppliedSparse { .. } => {
                 let mut iwork = vec![0_i32; 30];
                 iwork[5] = option.max_steps as i32;
-                iwork[17] = *max_nnz as i32;
                 iwork
             }
         }
