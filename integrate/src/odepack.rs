@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 #[derive(Debug, Clone)]
 pub struct Control {
     pub atol: f64,
