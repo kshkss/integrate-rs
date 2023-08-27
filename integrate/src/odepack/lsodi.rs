@@ -119,7 +119,8 @@ impl<'a> LsodiFullJacobian<'a> {
     }
 
     fn real_work_space(&self, n_eq: usize) -> Vec<f64> {
-        let rwork = vec![0.; 22 + 9 * n_eq + n_eq * n_eq];
+        let mut rwork = vec![0.; 22 + 9 * n_eq + n_eq * n_eq];
+        rwork[5] = self.option.max_step_size;
         rwork
     }
 
@@ -243,7 +244,9 @@ impl<'a> LsodiBandedJacobian<'a> {
     }
 
     fn real_work_space(&self, n_eq: usize) -> Vec<f64> {
-        vec![0.; 22 + 10 * n_eq + (2 * self.ml + self.mu) * n_eq]
+        let mut rwork = vec![0.; 22 + 10 * n_eq + (2 * self.ml + self.mu) * n_eq];
+        rwork[5] = self.option.max_step_size;
+        rwork
     }
 
     fn integer_work_space(&self, n_eq: usize, control: &Control) -> Vec<i32> {
@@ -367,11 +370,13 @@ impl<'a> LsodiSparseJacobian<'a> {
         use std::mem::size_of;
         let lenrat = size_of::<f64>() / size_of::<i32>();
 
-        if self.is_gen_internally() {
+        let mut rwork = if self.is_gen_internally() {
             vec![0.; 2 * self.max_nnz + 2 * n_eq + (self.max_nnz + 10 * n_eq) / lenrat]
         } else {
             vec![0.; 2 * self.max_nnz + 2 * n_eq + (self.max_nnz + 9 * n_eq) / lenrat]
-        }
+        };
+        rwork[5] = self.option.max_step_size;
+        rwork
     }
 
     fn integer_work_space(&self, _n_eq: usize, control: &Control) -> Vec<i32> {
