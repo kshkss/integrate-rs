@@ -3,6 +3,7 @@ pub struct Control {
     pub atol: f64,
     pub rtol: f64,
     pub max_steps: usize,
+    pub max_step_size: f64,
 }
 
 impl Default for Control {
@@ -11,6 +12,7 @@ impl Default for Control {
             atol: 1e-8,
             rtol: 1e-8,
             max_steps: 500,
+            max_step_size: f64::INFINITY,
         }
     }
 }
