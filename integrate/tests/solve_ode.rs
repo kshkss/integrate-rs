@@ -1,4 +1,4 @@
-use integrate::odepack::Lsode;
+use integrate::odepack::{Control, Lsode};
 
 fn solution_stiff(t: f64) -> [f64; 2] {
     [
@@ -165,4 +165,39 @@ fn closure_rhs_estimate_banded_jacobian() {
         (sol[1][0] - y0[0] * 0.5_f64.exp()).abs() < 1e-3,
         "error too large"
     );
+}
+
+#[test]
+fn test_lsodi() {
+    use integrate::odepack::lsodi::*;
+    use integrate::odepack::*;
+    use ndarray::prelude::*;
+
+    let res = |t: f64, y: &[f64], s: &[f64], r: &mut [f64]| {
+        r[0] = -0.4 * y[0] + 1e4 * y[1] * y[2] - s[0];
+        r[1] = 0.4 * y[0] - 1e4 * y[1] * y[2] - 3e7 * y[1] * y[1] - s[1];
+        r[2] = y[0] + y[1] + y[2] - 1.
+    };
+    let adda = |t: f64, y: &[f64], mut pd: ArrayViewMut2<f64>| {
+        pd[[0, 0]] = pd[[0, 0]] + 1.;
+        pd[[1, 1]] = pd[[1, 1]] + 1.;
+    };
+
+    let y = vec![1., 0., 0.];
+    let dy = vec![-0.04, 0.04, 0.];
+    let t = vec![
+        0., 4e-1, 4e0, 4e1, 4e2, 4e3, 4e4, 4e5, 4e6, 4e7, 4e8, 4e9, 4e10,
+    ];
+
+    let results = Lsodi::new(
+        &res,
+        &adda,
+        Control {
+            max_steps: 1000,
+            ..Default::default()
+        },
+    )
+    .run(&t, &y, &dy);
+
+    assert_eq!(results.0.len(), t.len());
 }
