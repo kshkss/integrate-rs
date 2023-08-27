@@ -176,7 +176,7 @@ pub fn dlsodes<'a, 'b, T: LsodesCallback>(
 
     let itol = 1;
     let itask = 1;
-    let iopt = 0;
+    let iopt = 1;
     let mut istate = 1;
 
     let lrw = rwork.len() as i32;
@@ -305,7 +305,7 @@ pub fn dlsodi<'a, 'b, T: LsodiCallback>(
 
     let itol = 1;
     let itask = 1;
-    let iopt = 0;
+    let iopt = 1;
     let mut istate = 1;
 
     let lrw = rwork.len() as i32;
@@ -438,7 +438,7 @@ pub fn dlsodis<'a, 'b, T: LsodisCallback>(
 
     let itol = 1;
     let itask = 1;
-    let iopt = 0;
+    let iopt = 1;
     let mut istate = 1;
 
     let lrw = rwork.len() as i32;
