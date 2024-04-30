@@ -161,7 +161,7 @@
 
 use libc::{c_double, c_int};
 
-extern "C" {
+extern "C-unwind" {
     /// Call `DLSODE` subroutine from ODEPACK
     ///
     ///```text
@@ -1275,7 +1275,7 @@ extern "C" {
     ///       suppressing the error control on those components of Y.
     /// ```
     pub fn dlsode_(
-        f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
+        f: extern "C-unwind" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
         neq: *const c_int,
         y: *mut c_double,
         t: &mut c_double,
@@ -1290,7 +1290,7 @@ extern "C" {
         lrw: *const c_int,
         iwork: *mut c_int,
         liw: *const c_int,
-        jac: extern "C" fn(
+        jac: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,
@@ -2456,7 +2456,7 @@ extern "C" {
     ///    suppressing the error control on those components of y.
     /// ```
     pub fn dlsodes_(
-        f: extern "C" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
+        f: extern "C-unwind" fn(*const c_int, *const c_double, *mut c_double, *mut c_double),
         neq: *const c_int,
         y: *mut c_double,
         t: *mut c_double,
@@ -2471,7 +2471,7 @@ extern "C" {
         lrw: *const c_int,
         iwork: *mut c_int,
         liw: *const c_int,
-        jac: extern "C" fn(
+        jac: extern "C-unwind" fn(
             *const c_int,    // neq
             *const c_double, // t
             *const c_double, // y
@@ -3569,7 +3569,7 @@ extern "C" {
     ///     suppressing the error control on those components of y.
     ///```
     pub fn dlsodi_(
-        res: extern "C" fn(
+        res: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,
@@ -3577,7 +3577,7 @@ extern "C" {
             *mut c_double,
             *const c_int,
         ),
-        adda: extern "C" fn(
+        adda: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,
@@ -3586,7 +3586,7 @@ extern "C" {
             *mut c_double,
             *const c_int,
         ),
-        jac: extern "C" fn(
+        jac: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,
@@ -4757,7 +4757,7 @@ extern "C" {
     ///     suppressing the error control on those components of y.
     ///```
     pub fn dlsoibt_(
-        res: extern "C" fn(
+        res: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,
@@ -4765,7 +4765,7 @@ extern "C" {
             *mut c_double,
             *const c_int,
         ),
-        adda: extern "C" fn(
+        adda: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,
@@ -4775,7 +4775,7 @@ extern "C" {
             *mut c_double,
             *mut c_double,
         ),
-        jac: extern "C" fn(
+        jac: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,
@@ -6073,7 +6073,7 @@ extern "C" {
     ///     suppressing the error control on those components of y.
     ///```
     pub fn dlsodis_(
-        res: extern "C" fn(
+        res: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,
@@ -6081,7 +6081,7 @@ extern "C" {
             *mut c_double,
             *const c_int,
         ),
-        adda: extern "C" fn(
+        adda: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,
@@ -6090,7 +6090,7 @@ extern "C" {
             *const c_int,
             *mut c_double,
         ),
-        jac: extern "C" fn(
+        jac: extern "C-unwind" fn(
             *const c_int,
             *const c_double,
             *const c_double,

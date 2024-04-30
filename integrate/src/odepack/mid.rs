@@ -13,7 +13,7 @@ pub trait LsodeCallback {
     fn jac(&self, t: f64, y: &[f64], pd: &mut [f64]);
 }
 
-extern "C" fn lsode_f<T: LsodeCallback>(
+extern "C-unwind" fn lsode_f<T: LsodeCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *mut c_double,
@@ -33,7 +33,7 @@ extern "C" fn lsode_f<T: LsodeCallback>(
     callback.f(t, y, dy);
 }
 
-extern "C" fn lsode_jac<T: LsodeCallback>(
+extern "C-unwind" fn lsode_jac<T: LsodeCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *const c_double,
@@ -118,7 +118,7 @@ pub trait LsodesCallback {
     fn jac(&self, t: f64, y: &[f64], j: usize, pd: &mut [f64]);
 }
 
-extern "C" fn lsodes_f<T: LsodesCallback>(
+extern "C-unwind" fn lsodes_f<T: LsodesCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *mut c_double,
@@ -138,7 +138,7 @@ extern "C" fn lsodes_f<T: LsodesCallback>(
     callback.f(t, y, dy);
 }
 
-extern "C" fn lsodes_jac<T: LsodesCallback>(
+extern "C-unwind" fn lsodes_jac<T: LsodesCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *const c_double,
@@ -225,7 +225,7 @@ pub trait LsodiCallback {
     fn adda(&self, t: f64, y: &[f64], pd: &mut [f64]);
 }
 
-extern "C" fn lsodi_res<T: LsodiCallback>(
+extern "C-unwind" fn lsodi_res<T: LsodiCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *const c_double,
@@ -248,7 +248,7 @@ extern "C" fn lsodi_res<T: LsodiCallback>(
     callback.residual(t, y, s, r);
 }
 
-extern "C" fn lsodi_adda<T: LsodiCallback>(
+extern "C-unwind" fn lsodi_adda<T: LsodiCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *const c_double,
@@ -271,7 +271,7 @@ extern "C" fn lsodi_adda<T: LsodiCallback>(
     callback.adda(t, y, p);
 }
 
-extern "C" fn lsodi_jac<T: LsodiCallback>(
+extern "C-unwind" fn lsodi_jac<T: LsodiCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *const c_double,
@@ -362,7 +362,7 @@ pub trait LsodisCallback {
     fn adda(&self, t: f64, y: &[f64], j: usize, pd: &mut [f64]);
 }
 
-extern "C" fn lsodis_res<T: LsodisCallback>(
+extern "C-unwind" fn lsodis_res<T: LsodisCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *const c_double,
@@ -385,7 +385,7 @@ extern "C" fn lsodis_res<T: LsodisCallback>(
     callback.residual(t, y, s, r);
 }
 
-extern "C" fn lsodis_adda<T: LsodisCallback>(
+extern "C-unwind" fn lsodis_adda<T: LsodisCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *const c_double,
@@ -409,7 +409,7 @@ extern "C" fn lsodis_adda<T: LsodisCallback>(
     callback.adda(t, y, j - 1, pd);
 }
 
-extern "C" fn lsodis_jac<T: LsodisCallback>(
+extern "C-unwind" fn lsodis_jac<T: LsodisCallback>(
     n: *const c_int,
     t_ptr: *const c_double,
     y_ptr: *const c_double,
