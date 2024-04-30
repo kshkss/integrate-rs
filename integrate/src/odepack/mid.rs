@@ -1,5 +1,6 @@
 use libc::{c_double, c_int};
 use once_cell::sync::Lazy;
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::slice;
 use std::sync::Mutex;
 
@@ -83,26 +84,32 @@ pub fn dlsode<'a, 'b, T: LsodeCallback>(
     let liw = iwork.len() as i32;
 
     let _lock = FLAG.lock().unwrap();
-    unsafe {
-        low::dlsode_(
-            lsode_f::<T>,
-            n.as_ptr(),
-            y.as_mut_ptr(),
-            &mut t0,
-            &t1,
-            &itol,
-            &rtol,
-            &atol,
-            &itask,
-            &mut istate,
-            &iopt,
-            rwork.as_mut_ptr(),
-            &lrw,
-            iwork.as_mut_ptr(),
-            &liw,
-            lsode_jac::<T>,
-            &mf,
-        );
+    let result = unsafe {
+        catch_unwind(AssertUnwindSafe(|| {
+            low::dlsode_(
+                lsode_f::<T>,
+                n.as_ptr(),
+                y.as_mut_ptr(),
+                &mut t0,
+                &t1,
+                &itol,
+                &rtol,
+                &atol,
+                &itask,
+                &mut istate,
+                &iopt,
+                rwork.as_mut_ptr(),
+                &lrw,
+                iwork.as_mut_ptr(),
+                &liw,
+                lsode_jac::<T>,
+                &mf,
+            )
+        }))
+    };
+    if let Err(err) = result {
+        drop(_lock);
+        resume_unwind(err);
     }
 }
 
@@ -183,26 +190,32 @@ pub fn dlsodes<'a, 'b, T: LsodesCallback>(
     let liw = iwork.len() as i32;
 
     let _lock = FLAG.lock().unwrap();
-    unsafe {
-        low::dlsodes_(
-            lsodes_f::<T>,
-            n.as_ptr(),
-            y0.as_mut_ptr(),
-            &mut t0,
-            &t1,
-            &itol,
-            &rtol,
-            &atol,
-            &itask,
-            &mut istate,
-            &iopt,
-            rwork.as_mut_ptr(),
-            &lrw,
-            iwork.as_mut_ptr(),
-            &liw,
-            lsodes_jac::<T>,
-            &mf,
-        );
+    let result = unsafe {
+        catch_unwind(AssertUnwindSafe(|| {
+            low::dlsodes_(
+                lsodes_f::<T>,
+                n.as_ptr(),
+                y0.as_mut_ptr(),
+                &mut t0,
+                &t1,
+                &itol,
+                &rtol,
+                &atol,
+                &itask,
+                &mut istate,
+                &iopt,
+                rwork.as_mut_ptr(),
+                &lrw,
+                iwork.as_mut_ptr(),
+                &liw,
+                lsodes_jac::<T>,
+                &mf,
+            )
+        }))
+    };
+    if let Err(err) = result {
+        drop(_lock);
+        resume_unwind(err);
     }
 }
 
@@ -312,28 +325,34 @@ pub fn dlsodi<'a, 'b, T: LsodiCallback>(
     let liw = iwork.len() as i32;
 
     let _lock = FLAG.lock().unwrap();
-    unsafe {
-        low::dlsodi_(
-            lsodi_res::<T>,
-            lsodi_adda::<T>,
-            lsodi_jac::<T>,
-            n.as_ptr(),
-            y0.as_mut_ptr(),
-            dydt0.as_mut_ptr(),
-            &mut t0,
-            &t1,
-            &itol,
-            &rtol,
-            &atol,
-            &itask,
-            &mut istate,
-            &iopt,
-            rwork.as_mut_ptr(),
-            &lrw,
-            iwork.as_mut_ptr(),
-            &liw,
-            &mf,
-        );
+    let result = unsafe {
+        catch_unwind(AssertUnwindSafe(|| {
+            low::dlsodi_(
+                lsodi_res::<T>,
+                lsodi_adda::<T>,
+                lsodi_jac::<T>,
+                n.as_ptr(),
+                y0.as_mut_ptr(),
+                dydt0.as_mut_ptr(),
+                &mut t0,
+                &t1,
+                &itol,
+                &rtol,
+                &atol,
+                &itask,
+                &mut istate,
+                &iopt,
+                rwork.as_mut_ptr(),
+                &lrw,
+                iwork.as_mut_ptr(),
+                &liw,
+                &mf,
+            )
+        }))
+    };
+    if let Err(err) = result {
+        drop(_lock);
+        resume_unwind(err);
     }
 }
 
@@ -445,27 +464,33 @@ pub fn dlsodis<'a, 'b, T: LsodisCallback>(
     let liw = iwork.len() as i32;
 
     let _lock = FLAG.lock().unwrap();
-    unsafe {
-        low::dlsodis_(
-            lsodis_res::<T>,
-            lsodis_adda::<T>,
-            lsodis_jac::<T>,
-            n.as_ptr(),
-            y0.as_mut_ptr(),
-            dydt0.as_mut_ptr(),
-            &mut t0,
-            &t1,
-            &itol,
-            &rtol,
-            &atol,
-            &itask,
-            &mut istate,
-            &iopt,
-            rwork.as_mut_ptr(),
-            &lrw,
-            iwork.as_mut_ptr(),
-            &liw,
-            &mf,
-        );
+    let result = unsafe {
+        catch_unwind(AssertUnwindSafe(|| {
+            low::dlsodis_(
+                lsodis_res::<T>,
+                lsodis_adda::<T>,
+                lsodis_jac::<T>,
+                n.as_ptr(),
+                y0.as_mut_ptr(),
+                dydt0.as_mut_ptr(),
+                &mut t0,
+                &t1,
+                &itol,
+                &rtol,
+                &atol,
+                &itask,
+                &mut istate,
+                &iopt,
+                rwork.as_mut_ptr(),
+                &lrw,
+                iwork.as_mut_ptr(),
+                &liw,
+                &mf,
+            )
+        }))
+    };
+    if let Err(err) = result {
+        drop(_lock);
+        resume_unwind(err);
     }
 }
